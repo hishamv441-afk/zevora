@@ -1,0 +1,2142 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Bill XML Live Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+Malayalam:wght@400;700&display=swap">
+<style>
+/* Layout: slim toolbar on top; XML editor on the left, printout on a darker desk on the right; stacks under 860px. Paper is the same in both themes. */
+:root{
+  --bg:#eef0f3; --panel:#fbfbfc; --line:#d6dbe2; --fg:#1b2330; --muted:#5b6676;
+  --accent:#2c5cc5; --accent-fg:#ffffff; --desk:#cdd2da; --gutter:#f0f2f5;
+  --ok:#1d7a4a; --err:#b42318; --errbg:#fdecea;
+  --paper:#fcfbf6; --ink:#181818;
+  --sheet:#ffffff; --sheet-ink:#1a1a1a; --sheet-line:#c9ced6; --sheet-muted:#5c6470;
+  --ui:"IBM Plex Sans",system-ui,"Noto Sans Malayalam",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,"Noto Sans Malayalam",monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151b; --panel:#1a2029; --line:#2a3340; --fg:#e5e8ee; --muted:#93a0b2;
+    --accent:#8fa8ff; --accent-fg:#0e1630; --desk:#0b0e12; --gutter:#161b23;
+    --ok:#5fd39b; --err:#ff8f84; --errbg:#3a1d1b; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#1a2029; --line:#2a3340; --fg:#e5e8ee; --muted:#93a0b2;
+  --accent:#8fa8ff; --accent-fg:#0e1630; --desk:#0b0e12; --gutter:#161b23;
+  --ok:#5fd39b; --err:#ff8f84; --errbg:#3a1d1b; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg); font:14px/1.45 var(--ui);
+  padding-block:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.app{max-width:1500px;margin:0 auto;display:grid;gap:12px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.bar h1{font:600 19px/1.2 var(--ui);letter-spacing:-.01em;margin:0}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+.hint,.note{margin:0;color:var(--muted);font-size:13px;max-width:80ch}
+.btn,select.btn{
+  font:500 13px/1.2 var(--ui);padding:7px 12px;border:1px solid var(--line);background:var(--panel);
+  color:var(--fg);border-radius:5px;cursor:pointer;
+}
+.btn:hover{border-color:var(--accent)}
+.btn.sm{padding:5px 10px}
+:is(.btn,.seg button,textarea,input[type=range]):focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;height:clamp(520px,calc(100vh - 150px),980px)}
+.pane{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--line);border-radius:6px;background:var(--panel);overflow:hidden}
+.ph{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line)}
+.lab{font:600 11px var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted);font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:5px 13px;font:500 13px var(--ui);color:var(--fg);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.zoom{display:flex;align-items:center;gap:8px}
+.zoom input{width:110px;accent-color:var(--accent)}
+.zoom output{font:500 12px var(--ui);min-width:3.2em;font-variant-numeric:tabular-nums}
+.ed{display:flex;flex:1;min-height:0}
+.gut{width:3.4em;flex:none;text-align:right;padding:10px 8px 10px 0;font:12.5px/20px var(--mono);color:var(--muted);background:var(--gutter);overflow:hidden;user-select:none;border-right:1px solid var(--line)}
+.gut span{display:block;padding-right:8px}
+.gut span.e{background:var(--errbg);color:var(--err);font-weight:700}
+#xml{flex:1;min-width:0;border:0;resize:none;outline:0;padding:10px 12px;font:12.5px/20px var(--mono);background:var(--panel);color:var(--fg);white-space:pre;overflow:auto;tab-size:2}
+.st{padding:7px 12px;border-top:1px solid var(--line);font-size:12.5px}
+.st.ok{color:var(--ok)}
+.st.bad{color:var(--err);background:var(--errbg)}
+.desk{
+  --zoom:1.6;--mm:calc(3.7795px * var(--zoom));
+  flex:1;min-height:0;overflow:auto;background:var(--desk);
+  display:flex;flex-direction:column;align-items:flex-start;gap:calc(10 * var(--mm));
+  padding:20px 16px 36px;
+}
+.desk.stale>*{opacity:.4}
+.desk>*{margin-inline:auto;flex:none}
+.empty{color:var(--muted);font-size:13px;padding:24px}
+/* thermal slip */
+.slip{
+  --paper-w:80;--pad:4;position:relative;width:calc(var(--paper-w) * var(--mm));
+  padding:calc(5 * var(--mm)) calc(var(--pad) * var(--mm)) calc(7 * var(--mm));
+  background:var(--paper);color:var(--ink);font:calc(2.5 * var(--mm))/1.3 var(--mono);
+  box-shadow:0 1px 2px rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18);
+}
+.slip::after{
+  content:"";position:absolute;left:0;right:0;top:100%;height:calc(2 * var(--mm));
+  background:
+    linear-gradient(135deg,var(--paper) 25%,transparent 25%) calc(-2 * var(--mm)) 0/calc(4 * var(--mm)) calc(4 * var(--mm)),
+    linear-gradient(225deg,var(--paper) 25%,transparent 25%) calc(-2 * var(--mm)) 0/calc(4 * var(--mm)) calc(4 * var(--mm));
+}
+.ln{white-space:pre-wrap;overflow-wrap:anywhere;min-height:1.3em}
+.ln.c{text-align:center}.ln.r{text-align:right}
+.ln .b{font-weight:700}.ln .u{text-decoration:underline}
+.ln .v{background:var(--ink);color:var(--paper)}
+.rule{border-top:calc(.3 * var(--mm)) dashed var(--ink);margin:calc(.9 * var(--mm)) 0}
+.bc,.qr{display:flex;flex-direction:column;align-items:center;margin:calc(1 * var(--mm)) 0;font-size:.85em}
+.bc svg,.qr svg{max-width:100%;fill:var(--ink)}
+.bc.l,.qr.l{align-items:flex-start}.bc.r,.qr.r{align-items:flex-end}
+/* A4 invoice */
+.a4{
+  width:calc(210 * var(--mm));min-height:calc(297 * var(--mm));padding:calc(14 * var(--mm)) calc(15 * var(--mm));
+  background:var(--sheet);color:var(--sheet-ink);font:calc(3.5 * var(--mm))/1.45 var(--ui);
+  box-shadow:0 1px 2px rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;
+}
+.a4 .head{display:flex;justify-content:space-between;gap:2em;border-bottom:.15em solid var(--sheet-ink);padding-bottom:1.1em}
+.a4 h1{font-size:2em;line-height:1.1;margin:0 0 .3em;font-weight:600;letter-spacing:-.01em}
+.a4 .sl{color:var(--sheet-muted);font-size:.92em}
+.a4 .kind{font:600 .95em var(--ui);letter-spacing:.16em;text-align:right;white-space:nowrap}
+.a4 .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5em 2em;margin:1.3em 0}
+.a4 .meta div{display:flex;gap:.8em;align-items:baseline}
+.a4 .meta dt{font:600 .75em var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--sheet-muted);min-width:6.5em}
+.a4 .meta dd{margin:0}
+.a4 table{width:100%;border-collapse:collapse;margin-top:.4em}
+.a4 th{text-align:left;font:600 .75em var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--sheet-muted);border-bottom:.08em solid var(--sheet-ink);padding:.5em .6em}
+.a4 td{padding:.6em;border-bottom:.05em solid var(--sheet-line);vertical-align:top}
+.a4 .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.a4 .tot{margin:1.2em 0 0 auto;width:56%;display:grid;gap:.35em}
+.a4 .tot div{display:flex;justify-content:space-between;gap:1em;font-variant-numeric:tabular-nums}
+.a4 .tot .g{border-top:.1em solid var(--sheet-ink);padding-top:.5em;margin-top:.3em;font-weight:600;font-size:1.3em}
+.a4 .words{margin-top:1.4em;font-size:.92em}
+.a4 .words b{font-weight:600}
+.a4 .foot{margin-top:auto;padding-top:2.5em;display:flex;justify-content:space-between;align-items:flex-end;gap:2em;color:var(--sheet-muted);font-size:.9em;white-space:pre-line}
+.a4 .sign{border-top:.06em solid var(--sheet-ink);padding-top:.4em;min-width:14em;text-align:center;color:var(--sheet-ink)}
+@media (max-width:860px){
+  .split{grid-template-columns:1fr;height:auto}
+  .pane{height:min(72vh,600px)}
+}
+/* editor tabs, data panels, printer settings, POS receipt */
+.seg.tabs button{padding:5px 12px}
+.panel{display:flex;flex-direction:column;flex:1;min-height:0}
+#json{flex:1;min-width:0;border:0;resize:none;outline:0;padding:10px 12px;font:12.5px/20px var(--mono);background:var(--panel);color:var(--fg);white-space:pre;overflow:auto;tab-size:2}
+#json:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.prod{flex:1;min-height:0;overflow:auto;padding:12px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 12px;margin-bottom:14px}
+.fields label,.cw,.dn{display:grid;gap:3px;font:500 12px var(--ui);color:var(--muted)}
+.cw,.dn{display:flex;align-items:center;gap:8px}
+.prod input[type=text],.prod input[type=number],.ps input[type=number]{
+  font:13px var(--ui);padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg);width:100%;min-width:0
+}
+.ps input[type=number]{width:5.5em}
+.prod input:focus-visible,.ps input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.pbar label{display:flex;gap:6px;align-items:center;font-size:13px}
+.ptw{overflow-x:auto}
+.pt{width:100%;min-width:560px;border-collapse:collapse}
+.pt th{text-align:left;font:600 11px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:4px 4px 6px}
+.pt td{padding:3px 4px;vertical-align:middle}
+.pt .net{font:13px var(--mono);text-align:right;white-space:nowrap;padding-right:8px;color:var(--muted)}
+.ps{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--line)}
+.ps input[type=range]{width:100px;accent-color:var(--accent)}
+.ps label.ck{display:flex;gap:6px;align-items:center;font:500 12px var(--ui);color:var(--muted)}
+.warns{border-top:1px solid var(--line);padding:6px 12px 8px;font-size:12.5px;max-height:104px;overflow:auto;color:var(--muted)}
+.warns b{font:600 11px var(--ui);letter-spacing:.1em;text-transform:uppercase}
+.warns ul{margin:4px 0 0;padding-left:1.2em}
+.slip .ln,.slip .rule,.slip .pl span{opacity:var(--dens,1)}
+.slip.pos{--dot:calc(.125 * var(--mm))}
+.pos .pl{position:relative}
+.pos .pl span{position:absolute;top:0;white-space:pre;transform-origin:0 0;font-family:var(--mono)}
+.pos .imgrow{display:flex;margin:calc(8 * var(--dot)) 0}
+.pos .imgrow img{display:block;filter:grayscale(1) contrast(1.15);opacity:var(--dens,1)}
+.pos .imgbox{border:calc(2 * var(--dot)) dashed var(--ink);display:grid;place-items:center;text-align:center;font:calc(14 * var(--dot))/1.3 var(--mono);opacity:.55;padding:0 calc(8 * var(--dot))}
+.pos .bcimg{color:var(--ink);opacity:var(--dens,1)}
+.pos .bcimg svg{display:block}
+.pos .cutline{margin-top:calc(14 * var(--dot));border-top:calc(2 * var(--dot)) dotted var(--ink);text-align:center;font:calc(14 * var(--dot)) var(--mono);padding-top:calc(4 * var(--dot));opacity:.5}
+@media print{
+  body *{visibility:hidden}
+  .desk,.desk *{visibility:visible}
+  .desk{--zoom:1 !important;position:absolute;left:0;top:0;overflow:visible;background:#fff;padding:0;display:block}
+  .slip{box-shadow:none;margin:0}
+  .slip::after{display:none}
+}
+
+.imgrow2{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.imgrow2 .th{width:64px;height:40px;border:1px dashed var(--line);border-radius:4px;display:grid;place-items:center;overflow:hidden;background:#fff;color:var(--muted);font-size:11px}
+.imgrow2 .th img{max-width:100%;max-height:100%;display:block}
+.imgrow2 .nm{font:13px var(--mono);overflow-wrap:anywhere}
+.imgrow2 .ok{color:var(--ok);font-size:12px}.imgrow2 .no{color:var(--err);font-size:12px}
+.imgrow2 .acts{display:flex;gap:6px}
+.warns .btn{margin-top:6px}
+
+.gut span.h{background:color-mix(in srgb,var(--accent) 28%,transparent);color:var(--fg);font-weight:700}
+.slip [data-ln],.a4 [data-ln]{cursor:pointer}
+.slip .ln[data-ln]:hover,.slip .ln span[data-ln]:hover,.slip .rule[data-ln]:hover,.slip .bc[data-ln]:hover,.slip .qr[data-ln]:hover,.pos .imgrow[data-ln]:hover,.pos .cutline[data-ln]:hover,.pos .pl span[data-ln]:hover,.a4 [data-ln]:hover{outline:1px dashed var(--accent)}
+.slip .sel,.a4 .sel{background:color-mix(in srgb,var(--accent) 24%,transparent);outline:1px solid var(--accent)}
+.pos .pl.sel:not(:empty){background:none;outline:none}
+
+[hidden]{display:none!important}
+.ed{min-height:160px}
+.ph-r{display:flex;align-items:center;gap:10px}
+.split.exp{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+@media (max-width:860px){
+  .split{grid-template-columns:1fr;height:auto}
+  .pane{height:min(80vh,760px);min-height:320px;resize:vertical}
+  .split.exp .pane:first-child{height:92vh}
+}
+
+.isrepx #paper,.isrepx .ps{display:none}
+.rp{position:relative;background:var(--sheet);color:var(--sheet-ink);box-shadow:0 1px 2px rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18);flex:none;overflow:hidden}
+.rb{position:absolute}
+.rc{position:absolute;box-sizing:border-box;overflow:hidden;display:flex;line-height:1.2}
+.rc.ph{border:1px dashed var(--sheet-muted);color:var(--sheet-muted);align-items:center;justify-content:center;font:11px var(--ui)}
+.rt{display:block;width:100%;overflow-wrap:anywhere}
+.rl{position:absolute;left:0;right:0}
+.rbc{width:100%;height:100%;color:#000}
+.rbc svg{width:100%;height:100%;display:block;fill:currentColor}
+.rc img{width:100%;height:100%;display:block}
+.rp [data-ln]{cursor:pointer}
+.rp .rc[data-ln]:hover{outline:1px dashed var(--accent);z-index:2}
+.rp .sel{background:color-mix(in srgb,var(--accent) 24%,transparent);outline:1px solid var(--accent);z-index:3}
+.rp .rb.sel{background:none;outline:none}
+.selbar{border-top:1px solid var(--line);padding:8px 12px 10px;max-height:230px;overflow:auto;background:var(--panel)}
+.sbh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;flex-wrap:wrap}
+.sbb{display:flex;gap:6px}
+.sbg{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 10px}
+.sbg label{display:grid;gap:3px;font:500 11px var(--ui);color:var(--muted)}
+.sbg label.wide{grid-column:span 2}
+.sbg input[type=text],.sbg input[type=number],.sbg select{font:13px var(--ui);padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--fg);width:100%;min-width:0}
+.sbg input[type=checkbox]{justify-self:start;width:18px;height:18px}
+.sbg input:focus-visible,.sbg select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sbg input:disabled{opacity:.5}
+</style>
+<div class="app">
+  <header class="bar">
+    <h1>Bill XML Live Preview</h1>
+    <div class="tools">
+      <select id="sample" class="btn" aria-label="Load a sample">
+        <option value="">Load sample…</option>
+        <option value="pos">Your POS Commands XML + data</option>
+        <option value="repx">DevExpress REPX report + data</option>
+        <option value="grv">Your GRV Purchase Invoice (A4 .repx)</option>
+        <option value="bill">Simple bill XML</option>
+        <option value="epos">Receipt (ePOS-Print XML)</option>
+        <option value="other">Unknown XML layout</option>
+      </select>
+      <button type="button" class="btn" id="open">Open XML file</button>
+      <input type="file" id="file" accept=".xml,.repx,text/xml,application/xml" hidden>
+      <button type="button" class="btn" id="logobtn">Upload images</button>
+      <input type="file" id="logo" accept="image/*" multiple hidden>
+      <button type="button" class="btn" id="copy">Copy XML</button>
+      <button type="button" class="btn local" id="dlxml" hidden>Download XML</button>
+      <button type="button" class="btn local" id="dljson" hidden>Download JSON</button>
+      <button type="button" class="btn local" id="prn" hidden>Print</button>
+    </div>
+  </header>
+  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
+  <main class="split" id="split">
+    <section class="pane" aria-label="Editor">
+      <div class="ph">
+        <div class="seg tabs" id="tabs" role="tablist" aria-label="Editor tabs">
+          <button type="button" role="tab" data-tab="xml" aria-pressed="true">Template XML</button>
+          <button type="button" role="tab" data-tab="json" aria-pressed="false">Sample data</button>
+          <button type="button" role="tab" data-tab="prod" aria-pressed="false">Products</button>
+          <button type="button" role="tab" data-tab="img" aria-pressed="false">Images</button>
+        </div>
+        <span class="ph-r"><span id="lines" class="muted"></span><button type="button" class="btn sm" id="expand">Expand</button></span>
+      </div>
+      <div class="panel" id="t-xml">
+        <div class="ed">
+          <div class="gut" id="gut" aria-hidden="true"></div>
+          <textarea id="xml" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="Template XML"></textarea>
+        </div>
+        <div class="st ok" id="status" role="status"></div>
+      </div>
+      <div class="panel" id="t-json" hidden>
+        <textarea id="json" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="Sample data JSON"></textarea>
+        <div class="st ok" id="jstatus" role="status"></div>
+      </div>
+      <div class="panel" id="t-prod" hidden>
+        <div class="prod" id="prod"></div>
+      </div>
+      <div class="panel" id="t-img" hidden>
+        <div class="prod" id="img"></div>
+      </div>
+    </section>
+    <section class="pane" id="prevpane" aria-label="Live printout">
+      <div class="ph">
+        <div class="seg" id="paper" role="group" aria-label="Paper size">
+          <button type="button" data-mode="58" aria-pressed="false">58 mm</button>
+          <button type="button" data-mode="80" aria-pressed="true">80 mm</button>
+          <button type="button" data-mode="custom" aria-pressed="false">Custom</button>
+          <button type="button" data-mode="a4" aria-pressed="false">A4</button>
+        </div>
+        <span class="muted" id="repxinfo" hidden></span>
+        <div class="zoom">
+          <span class="lab">Zoom</span>
+          <input type="range" id="zoom" min="40" max="260" step="5" value="160" aria-label="Zoom">
+          <output id="zoomv" for="zoom">160%</output>
+          <button type="button" class="btn sm" id="fit">Fit</button>
+        </div>
+      </div>
+      <div class="ps">
+        <label class="cw">Custom width <input type="number" id="cmm" min="40" max="120" step="1" value="80" disabled> mm</label>
+        <label class="dn">Ink density <input type="range" id="dens" min="35" max="100" step="5" value="100"></label>
+        <label class="ck"><input type="checkbox" id="cut" checked> Cut line</label>
+        <label class="ck"><input type="checkbox" id="auto" checked> Auto-fill missing data</label>
+      </div>
+      <div class="desk" id="desk"></div>
+      <div class="selbar" id="selbar" hidden></div>
+      <div class="warns" id="warns" hidden></div>
+    </section>
+  </main>
+  <p class="note">Assumptions for POS Commands XML: Large and Medium use a 12 x 24 dot font (48 characters on 80 mm), small uses 9 x 17 dots (64 characters), SetPosition and SetLeftMargin are in dots, PrintBarcodeImage prepares the image that PrintImageDefined prints, and a missing LineFeed means Yes. Real printers can differ in details. Barcodes in the other layouts are placeholders.</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script>
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+const num = s => { const v = parseFloat(String(s == null ? '' : s).replace(/,/g, '')); return isNaN(v) ? 0 : v; };
+const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const f2 = n => r2(n).toFixed(2);
+const fin = n => r2(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const kids = (n, name) => [...n.children].filter(c => !name || c.localName === name);
+const kid = (n, name) => kids(n, name)[0] || null;
+const txt = (n, p) => { let c = n; for (const s of p.split('/')) { c = c && kid(c, s); } return c ? c.textContent.trim() : ''; };
+const field = (n, k) => n.hasAttribute(k) ? n.getAttribute(k).trim() : txt(n, k);
+
+/* Indian-system amount in words */
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+const two = n => n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+const three = n => n > 99 ? ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + two(n % 100) : '') : two(n);
+function words(n) {
+  if (n === 0) return 'Zero';
+  const out = [];
+  const cr = Math.floor(n / 1e7); n %= 1e7;
+  const lk = Math.floor(n / 1e5); n %= 1e5;
+  const th = Math.floor(n / 1e3); n %= 1e3;
+  if (cr) out.push(words(cr) + ' Crore');
+  if (lk) out.push(two(lk) + ' Lakh');
+  if (th) out.push(two(th) + ' Thousand');
+  if (n) out.push(three(n));
+  return out.join(' ');
+}
+
+/* Samples. Receipt rows are built with padding so columns line up on 32-character paper. */
+const row = (a, b, c) => a.padEnd(17) + b.padStart(3) + c.padStart(12);
+const lr = (a, b) => a.padEnd(20) + b.padStart(12);
+const SAMPLES = {
+  bill: () => `<bill>
+  <currency>₹</currency>
+  <shop>
+    <name>Sree Krishna Stores</name>
+    <address>MG Road, Ernakulam
+Kochi 682011</address>
+    <phone>0484 2345678</phone>
+    <gstin>32ABCDE1234F1Z5</gstin>
+  </shop>
+  <meta>
+    <invoice>INV-1042</invoice>
+    <date>11-Nov-2026 11:20 AM</date>
+    <customer>Walk-in</customer>
+    <cashier>Hisham</cashier>
+  </meta>
+  <items>
+    <item name="Matta Rice 5 kg" qty="1" rate="365.00"/>
+    <item name="Coconut Oil 1 L (വെളിച്ചെണ്ണ)" qty="2" rate="210.00"/>
+    <item name="Tea Powder 250 g" qty="3" rate="88.50"/>
+    <item name="Banana Chips 200 g" qty="2" rate="60.00"/>
+    <item name="Detergent Bar" qty="4" rate="12.00"/>
+  </items>
+  <discount>5%</discount>
+  <tax name="GST" percent="5"/>
+  <paid>1500</paid>
+  <footer>Thank you! Visit again
+Goods once sold will not be taken back</footer>
+</bill>
+`,
+  epos: () => {
+    const body = [
+      'Bill No : INV-1042', 'Date    : 11-11-2026 11:20'
+    ].join('&#10;') + '&#10;';
+    const items = [
+      row('Matta Rice 5 kg', '1', '365.00'),
+      row('Coconut Oil 1 L', '2', '420.00'),
+      row('Tea Powder 250 g', '3', '265.50'),
+      row('Banana Chips 200g', '2', '120.00'),
+      row('Detergent Bar', '4', '48.00')
+    ].join('&#10;') + '&#10;';
+    const sums = [
+      lr('Subtotal', '1218.50'), lr('Discount 5%', '-60.93'),
+      lr('CGST 2.5%', '28.94'), lr('SGST 2.5%', '28.94'), lr('Round off', '-0.45')
+    ].join('&#10;') + '&#10;';
+    return `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+  <text align="center"/>
+  <text em="true" width="2" height="2">SREE KRISHNA&#10;</text>
+  <text em="false" width="1" height="1">STORES&#10;MG Road, Kochi 682011&#10;Ph: 0484 2345678&#10;GSTIN 32ABCDE1234F1Z5&#10;</text>
+  <feed line="1"/>
+  <text align="left"/>
+  <text>${body}</text>
+  <hline x1="1" x2="32"/>
+  <text em="true">${'Item'.padEnd(17) + 'Qty'.padStart(3) + 'Amount'.padStart(12)}&#10;</text>
+  <text em="false"/>
+  <hline x1="1" x2="32"/>
+  <text>${items}</text>
+  <hline x1="1" x2="32"/>
+  <text>${sums}</text>
+  <hline x1="1" x2="32"/>
+  <text em="true" width="2" height="2">${'TOTAL'.padEnd(10) + 'Rs 1215.00'.padStart(14)}&#10;</text>
+  <text em="false" width="1" height="1"/>
+  <feed line="1"/>
+  <text align="center">Thank you! Visit again&#10;</text>
+  <barcode type="code39" hri="true" height="48">INV1042</barcode>
+  <feed line="3"/>
+  <cut type="feed"/>
+</epos-print>
+`;
+  },
+  other: () => `<order id="A-77">
+  <store name="Sree Krishna Stores" city="Kochi"/>
+  <customer>Anil Kumar</customer>
+  <line sku="RICE5" qty="1">Matta Rice 5 kg</line>
+  <line sku="OIL1" qty="2">Coconut Oil 1 L</line>
+  <note>Deliver before 5 PM</note>
+</order>
+`
+};
+
+
+const POS_XML = "<Commands Path=\"xml\" Language=\"ES\">\n  <Command name=\"Reset\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"DefineImage\" Filename=\"xml\\logo.png\"/>\n  <Command name=\"PrintImageDefined\" PrintMode=\"normal\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetFont\" Font=\"Medium\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"SetCharSize\" X=\"2\" Y=\"1\"/>\n  <Command name=\"PrintString\" String=\"  TAX INVOICE   \" LineFeed=\"Yes\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"----------------------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetFont\" Font=\"small\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"PrintString\" String=\"Date   :\" LineFeed=\"No\"/>\n  <Command name=\"PrintString\" Mapping=\"BillDate\" Format=\"dd-MMM-yyyy HH:mm\" LineFeed=\"NO\" FixedLen=\"32\"/>\n  <Command name=\"PrintString\" String=\"Bill No: \" LineFeed=\"No\"/>\n  <Command name=\"PrintString\" Mapping=\"BillNo\" LineFeed=\"YES\" FixedLen=\"13\"/>\n  <Command name=\"PrintString\" String=\"POS Name:  \" LineFeed=\"No\"/>\n  <Command name=\"PrintString\" Mapping=\"PosName\" LineFeed=\"NO\" FixedLen=\"29\"/>\n  <Command name=\"PrintString\" String=\"User ID: \" LineFeed=\"No\"/>\n  <Command name=\"PrintString\" Mapping=\"UserName\" LineFeed=\"No\" FixedLen=\"14\"/>\n  <Command name=\"PrintString\" String=\"Tax License Number :  \" LineFeed=\"No\"/>\n  <Command name=\"PrintString\" Mapping=\"TaxLicenseNo\" LineFeed=\"no\"/>\n  <Command name=\"SetCharSize\" X=\"2\" Y=\"1\"/>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"PrintString\" String=\"\" LineFeed=\"Yes\"/>\n  <Command name=\"SetCharSize\" X=\"2\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"small\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"--------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"PrintString\" String=\"Description\" FixedLen=\"22\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n  <Command name=\"PrintString\" String=\"Tax(%)\" FixedLen=\"6\" LineFeed=\"Yes\" FillOnLeft=\"True\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"small\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"Qty\" FixedLen=\"6\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" String=\"Rate\" FixedLen=\"9\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" String=\"Total\" FixedLen=\"17\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" String=\"Tax\" FixedLen=\"11\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" String=\"Net \" FixedLen=\"14\" LineFeed=\"Yes\" FillOnLeft=\"true\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"------------------------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"Loop\" On=\"Legs\">\n    <Command name=\"SetPosition\" X=\"0\"/>\n    <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n    <Command name=\"SetHAlign\" Align=\"Left\"/>\n    <Command name=\"SetFont\" Font=\"small\"/>\n    <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n    <Command name=\"PrintString\" Mapping=\"Barcode\" FixedLen=\"18\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n    <Command name=\"PrintString\" Mapping=\"Description\" FixedLen=\"32\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n    <Command name=\"PrintString\" Mapping=\"TaxPer\" Format=\"0.00\" FixedLen=\"6\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" String=\"%\" LineFeed=\"Yes\"/>\n    <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n    <Command name=\"SetHAlign\" Align=\"Left\"/>\n    <Command name=\"SetFont\" Font=\"Large\"/>\n    <Command name=\"PrintString\" Mapping=\"Qty\" Format=\"0.00\" FixedLen=\"6\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" Mapping=\"Rate\" Format=\"0.00\" FixedLen=\"8\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" Mapping=\"Total\" Format=\"0.00\" FixedLen=\"12\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" Mapping=\"Tax\" Format=\"0.00\" FixedLen=\"8\" LineFeed=\"No\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" Mapping=\"NetTotal\" Format=\"0.00\" FixedLen=\"11\" LineFeed=\"Yes\" FillOnLeft=\"true\"/>\n  </Command>\n  <Command name=\"PrintString\" String=\"------------------------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"Loop\" On=\"LegsOthers\">\n    <Command name=\"Loop\" On=\"LegsCurrency\">\n      <Command name=\"SetPosition\" X=\"0\"/>\n      <Command name=\"PrintString\" Mapping=\"CurrencyName\" FixedLen=\"16\" FillOnLeft=\"false\" LineFeed=\"No\"/>\n      <Command name=\"PrintString\" Mapping=\"Amount\" Format=\"0.00\" FixedLen=\"10\" FillOnLeft=\"True\" LineFeed=\"No\"/>\n      <Command name=\"PrintString\" Mapping=\"LAmount\" Format=\"0.00\" LineFeed=\"No\" FixedLen=\"9\" FillOnLeft=\"true\"/>\n      <Command name=\"PrintString\" Mapping=\"TAmount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"10\" FillOnLeft=\"true\"/>\n    </Command>\n    <Command name=\"Loop\" On=\"LegsCard\">\n      <Command name=\"SetPosition\" X=\"0\"/>\n      <Command name=\"PrintString\" String=\"Card : \" LineFeed=\"no\"/>\n      <Command name=\"PrintString\" Mapping=\"CardName\" FixedLen=\"9\" FillOnLeft=\"false\" LineFeed=\"No\"/>\n      <Command name=\"PrintString\" String=\"Number : \" LineFeed=\"no\"/>\n      <Command name=\"PrintString\" String=\"*****\" LineFeed=\"no\"/>\n      <Command name=\"PrintString\" Mapping=\"CardNo\" LineFeed=\"No\"/>\n      <Command name=\"SetPosition\" X=\"300\"/>\n      <Command name=\"PrintString\" Mapping=\"Amount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"20\" FillOnLeft=\"true\"/>\n    </Command>\n    <Command name=\"Loop\" On=\"LegsCustomer\">\n      <Command name=\"SetPosition\" X=\"5\"/>\n      <Command name=\"PrintString\" Mapping=\"CustomerName\" FixedLen=\"20\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n      <Command name=\"PrintString\" String=\"Amount:\" FixedLen=\"18\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n      <Command name=\"PrintString\" Mapping=\"Amount\" FixedLen=\"20\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n      <Command name=\"PrintString\" String=\"PreviousBalance:\" FixedLen=\"18\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n      <Command name=\"PrintString\" Mapping=\"PreviousBalance\" FixedLen=\"20\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n      <Command name=\"PrintString\" String=\"CurrentBalance:\" FixedLen=\"18\" LineFeed=\"No\" FillOnLeft=\"false\"/>\n      <Command name=\"PrintString\" Mapping=\"CurrentBalance\" FixedLen=\"20\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n    </Command>\n    <Command name=\"PrintString\" String=\"------------------------------------------------\" LineFeed=\"Yes\"/>\n  </Command>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"PrintString\" String=\"Qty: \" LineFeed=\"No\"/>\n  <Command name=\"PrintMoney\" Mapping=\"TotalQty\" LineFeed=\"No\" FixedLen=\"13\" FillOnLeft=\"False\" Format=\"0\"/>\n  <Command name=\"PrintMoney\" Mapping=\"ItemTotal\" LineFeed=\"No\" FixedLen=\"8\" FillOnLeft=\"true\" Format=\"0.00\"/>\n  <Command name=\"PrintMoney\" Mapping=\"TaxTotal\" LineFeed=\"No\" FixedLen=\"8\" FillOnLeft=\"true\" Format=\"0.00\"/>\n  <Command name=\"PrintString\" Mapping=\"BillAmount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"11\" FillOnLeft=\"true\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"------------------------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"Loop\" On=\"LegsAdjustments\">\n    <Command name=\"SetPosition\" X=\"0\"/>\n    <Command name=\"PrintString\" Mapping=\"Description\" LineFeed=\"No\" FixedLen=\"31\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" String=\":\" LineFeed=\"No\" FixedLen=\"1\" FillOnLeft=\"true\"/>\n    <Command name=\"PrintString\" Mapping=\"Total\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"13\" FillOnLeft=\"true\"/>\n  </Command>\n  <Command name=\"SetPosition\" X=\"0\"/>\n  <Command name=\"SetCharSize\" X=\"2\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"small\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"PrintString\" String=\"Net Amount:\" LineFeed=\"No\" FixedLen=\"22\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" Mapping=\"NetAmount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"8\" FillOnLeft=\"true\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n  <Command name=\"SetHAlign\" Align=\"Left\"/>\n  <Command name=\"SetFont\" Font=\"large\"/>\n  <Command name=\"SetLeftMargin\" Margin=\"0\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetPosition\" X=\"0\"/>\n  <Command name=\"PrintString\" String=\"Tender Amount :\" LineFeed=\"No\" FixedLen=\"32\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" Mapping=\"PaidAmount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"13\" FillOnLeft=\"true\"/>\n  <Command name=\"SetPosition\" X=\"0\"/>\n  <Command name=\"PrintString\" String=\"Bal. Amount :\" LineFeed=\"No\" FixedLen=\"32\" FillOnLeft=\"true\"/>\n  <Command name=\"PrintString\" Mapping=\"BalAmount\" Format=\"0.00\" LineFeed=\"Yes\" FixedLen=\"13\" FillOnLeft=\"true\"/>\n  <Command name=\"Loop\" On=\"LegsLoyality\">\n    <Command name=\"PrintString\" String=\"-------------------------------------------------\" LineFeed=\"Yes\"/>\n    <Command name=\"SetHAlign\" Align=\"Center\"/>\n    <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n    <Command name=\"PrintString\" String=\" LOYALTY DETAILS  \" FillOnLeft=\"False\" LineFeed=\"Yes\"/>\n    <Command name=\"LineFeed\" Line=\"0\"/>\n    <Command name=\"SetCharSize\" X=\"1\" Y=\"1\"/>\n    <Command name=\"SetFont\" Font=\"Small\"/>\n    <Command name=\"SetHAlign\" Align=\"Left\"/>\n    <Command name=\"SetPosition\" X=\"0\"/>\n    <Command name=\"PrintString\" String=\"Customer:\" FixedLen=\"12\" FillOnLeft=\"False\" LineFeed=\"No\"/>\n    <Command name=\"PrintString\" Mapping=\"LCustometName\" FixedLen=\"29\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n    <Command name=\"PrintString\" String=\"Customer No:\" FixedLen=\"12\" FillOnLeft=\"False\" LineFeed=\"No\"/>\n    <Command name=\"PrintString\" Mapping=\"LCustometNo\" FixedLen=\"29\" FillOnLeft=\"false\" LineFeed=\"Yes\"/>\n    <Command name=\"SetPosition\" X=\"0\"/>\n    <Command name=\"PrintString\" String=\"Previous Bal:\" FixedLen=\"22\" FillOnLeft=\"False\" LineFeed=\"No\"/>\n    <Command name=\"PrintString\" Mapping=\"LPrvAmount\" FixedLen=\"12\" FillOnLeft=\"False\" LineFeed=\"Yes\" Format=\"0.00\"/>\n    <Command name=\"PrintString\" String=\"Current Bill:\" FixedLen=\"22\" FillOnLeft=\"False\" LineFeed=\"No\"/>\n    <Command name=\"PrintString\" Mapping=\"LBillAmount\" FixedLen=\"12\" FillOnLeft=\"False\" LineFeed=\"Yes\" Format=\"0.00\"/>\n    <Command name=\"PrintString\" String=\"Total Points:\" FixedLen=\"22\" FillOnLeft=\"False\" LineFeed=\"No\"/>\n    <Command name=\"PrintString\" Mapping=\"LTotal\" FixedLen=\"12\" FillOnLeft=\"False\" LineFeed=\"Yes\" Format=\"0.00\"/>\n  </Command>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"PrintString\" String=\"------------------------------------------------\" LineFeed=\"Yes\"/>\n  <Command name=\"LineFeed\" Line=\"0\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"PrintString\" String=\"Thank you visit again\" LineFeed=\"Yes\"/>\n  <Command name=\"PrintString\" String=\"Keep bill for Warranty,\" LineFeed=\"Yes\"/>\n  <Command name=\"PrintString\" String=\"No Warranty for Physically Damaged Goods,\" LineFeed=\"Yes\"/>\n  <Command name=\"PrintString\" String=\"No Cash Refund.\" LineFeed=\"Yes\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"PrintBarcodeImage\" Mapping=\"TranInformBarcode\" BackColor=\"White\" ForeColor=\"Black\" Width=\"400\" Height=\"100\" BarcodeType=\"CODE128\" AlignmentPositions=\"CENTER\" IncludeLabel=\"True\" LabelPositions=\"BOTTOMCENTER\" LabelFontName=\"Arial\" LabelFontSize=\"15\" LabelFontStyle=\"Regular\"/>\n  <Command name=\"PrintImageDefined\" PrintMode=\"normal\"/>\n  <Command name=\"LineFeed\" Line=\"1\"/>\n  <Command name=\"SetCharSize\" X=\"2\" Y=\"1\"/>\n  <Command name=\"SetFont\" Font=\"Large\"/>\n  <Command name=\"SetHAlign\" Align=\"Center\"/>\n  <Command name=\"LineFeed\" Line=\"3\"/>\n  <Command name=\"CutPaper\"/>\n</Commands>\n";
+const POS_DATA = "{\n  \"BillNo\": \"4\",\n  \"BillDate\": \"2026-11-11T10:52:00\",\n  \"PosName\": \"POS1\",\n  \"UserName\": \"01\",\n  \"TaxLicenseNo\": \"105024829100003\",\n  \"TranInformBarcode\": \"0001000042026111101347\",\n  \"Legs\": [\n    {\n      \"Barcode\": \"6291002709143\",\n      \"Description\": \"G/O Bthr Zing ChcknStrips 470\",\n      \"TaxPer\": 5,\n      \"Qty\": 1,\n      \"Rate\": 34.5,\n      \"Total\": 32.86,\n      \"Tax\": 1.64,\n      \"NetTotal\": 34.5\n    }\n  ],\n  \"TotalQty\": 1,\n  \"ItemTotal\": 32.86,\n  \"TaxTotal\": 1.64,\n  \"BillAmount\": 34.5,\n  \"NetAmount\": 34.5,\n  \"PaidAmount\": 40,\n  \"BalAmount\": 5.5,\n  \"LegsOthers\": [],\n  \"LegsAdjustments\": [],\n  \"LegsLoyality\": []\n}";
+SAMPLES.pos = () => POS_XML;
+
+
+/* ---------- Line model ----------
+   A slip is an array of lines. A line is one of:
+   { a:'l'|'c'|'r', segs:[{t,b,u,v,w}] }  text   |  { rule:true }  |  { a, bc:'value', h }  barcode  |  { a, qr:'value' }  */
+const seg = (t, o) => ({ t, b: !!(o && o.b), u: false, v: false, w: (o && o.w) || 1, ln: (o && o.ln) || 0 });
+const wrap = (s, n) => {
+  const out = [];
+  String(s).split('\n').forEach(p => {
+    let line = '';
+    p.split(/\s+/).filter(Boolean).forEach(w => {
+      while (w.length > n) { if (line) { out.push(line); line = ''; } out.push(w.slice(0, n)); w = w.slice(n); }
+      if (!line) line = w;
+      else if ((line + ' ' + w).length <= n) line += ' ' + w;
+      else { out.push(line); line = w; }
+    });
+    out.push(line);
+  });
+  return out;
+};
+
+/* ---------- Epson ePOS-Print XML ---------- */
+function eposSlips(root, lineOf) {
+  let cl = 0;
+  const st = { a: 'l', b: false, u: false, v: false, w: 1 };
+  const slips = [[]];
+  let line = null;
+  const cur = () => slips[slips.length - 1];
+  const blank = () => cur().push({ a: 'l', segs: [], ln: cl });
+  const nl = () => { cur().push(line || { a: st.a, segs: [], ln: cl }); line = null; };
+  const flush = () => { if (line) { cur().push(line); line = null; } };
+  const put = t => t.split('\n').forEach((p, i) => {
+    if (i > 0) nl();
+    if (p !== '') {
+      if (!line) line = { a: st.a, segs: [], ln: cl };
+      line.segs.push({ t: p, b: st.b, u: st.u, v: st.v, w: st.w, ln: cl });
+    }
+  });
+  const yes = v => v === 'true' || v === '1';
+  const AL = { left: 'l', center: 'c', right: 'r' };
+  const walk = n => {
+    for (const c of n.children) {
+      const k = c.localName;
+      cl = lineOf ? lineOf(c) : 0;
+      if (k === 'text') {
+        if (c.hasAttribute('align')) st.a = AL[c.getAttribute('align')] || 'l';
+        if (c.hasAttribute('em')) st.b = yes(c.getAttribute('em'));
+        if (c.hasAttribute('ul')) st.u = yes(c.getAttribute('ul'));
+        if (c.hasAttribute('reverse')) st.v = yes(c.getAttribute('reverse'));
+        if (c.hasAttribute('width')) st.w = Math.max(1, Math.min(8, Math.round(num(c.getAttribute('width'))) || 1));
+        put(c.textContent);
+      } else if (k === 'feed') {
+        flush();
+        const cnt = c.hasAttribute('line') ? Math.round(num(c.getAttribute('line'))) : 1;
+        for (let i = 0; i < Math.min(cnt, 20); i++) blank();
+      } else if (k === 'hline') {
+        flush(); cur().push({ rule: true, ln: cl });
+      } else if (k === 'cut') {
+        flush(); blank(); blank(); slips.push([]);
+      } else if (k === 'barcode') {
+        flush(); cur().push({ a: st.a, bc: c.textContent.trim(), h: num(c.getAttribute('height')) || 48, ln: cl });
+      } else if (k === 'symbol') {
+        flush(); cur().push({ a: st.a, qr: c.textContent.trim(), ln: cl });
+      } else if (k === 'logo' || k === 'image') {
+        flush(); cur().push({ a: 'c', segs: [seg('[' + k.toUpperCase() + ']', { ln: cl })], ln: cl });
+      } else if (c.children.length) {
+        walk(c);
+      }
+    }
+  };
+  walk(root);
+  flush();
+  return slips.filter(s => s.length);
+}
+
+/* ---------- Any other XML: show the tags as indented text ---------- */
+function genericSlips(root, lineOf) {
+  const L = [];
+  let gl = 0;
+  const add = (t, b, d) => L.push({ a: 'l', segs: [seg('  '.repeat(d) + t, { b, ln: gl })], ln: gl });
+  const attrs = n => [...n.attributes].filter(a => !/^xmlns/.test(a.name)).map(a => a.name + '="' + a.value + '"').join(' ');
+  const walk = (n, d) => {
+    const t = [...n.childNodes].filter(x => x.nodeType === 3).map(x => x.textContent.trim()).join(' ').trim();
+    gl = lineOf ? lineOf(n) : 0;
+    const at = attrs(n);
+    const head = n.localName + (at ? ' ' + at : '');
+    if (!n.children.length) add(t ? head + ': ' + t : head, false, d);
+    else { add(head + (t ? ': ' + t : ''), true, d); [...n.children].forEach(c => walk(c, d + 1)); }
+  };
+  walk(root, 0);
+  return [L];
+}
+
+/* ---------- Simple <bill> layout ---------- */
+const LABELS = { invoice: 'Bill No', date: 'Date', customer: 'Customer', cashier: 'Cashier', table: 'Table', mobile: 'Mobile' };
+const label = k => LABELS[k] || (k.charAt(0).toUpperCase() + k.slice(1)).replace(/[-_]/g, ' ');
+
+function billModel(root, lineOf) {
+  const Ln = e => (lineOf && e ? lineOf(e) : 0);
+  const shop = kid(root, 'shop'), meta = kid(root, 'meta');
+  const items = kids(kid(root, 'items') || root, 'item').map(it => {
+    const q = field(it, 'qty'), rate = num(field(it, 'rate')), qty = q === '' ? 1 : num(q), a = field(it, 'amount');
+    return { name: field(it, 'name') || it.textContent.trim(), qty, rate, amt: a !== '' ? num(a) : r2(qty * rate), ln: Ln(it) };
+  });
+  const sub = r2(items.reduce((s, i) => s + i.amt, 0));
+  const dt = txt(root, 'discount');
+  let disc = 0, dlab = 'Discount';
+  if (dt) { if (dt.endsWith('%')) { disc = r2(sub * num(dt) / 100); dlab = 'Discount ' + num(dt) + '%'; } else disc = r2(num(dt)); }
+  const base = r2(sub - disc);
+  const taxRows = [];
+  kids(root, 'tax').forEach(t => {
+    const p = num(field(t, 'percent')), name = field(t, 'name') || 'Tax', amt = r2(base * p / 100);
+    if (name.toUpperCase() === 'GST') {
+      const c = r2(amt / 2);
+      taxRows.push({ n: 'CGST ' + p / 2 + '%', a: c, ln: Ln(t) }, { n: 'SGST ' + p / 2 + '%', a: r2(amt - c), ln: Ln(t) });
+    } else taxRows.push({ n: name + ' ' + p + '%', a: amt, ln: Ln(t) });
+  });
+  const raw = r2(base + taxRows.reduce((s, t) => s + t.a, 0));
+  const total = Math.round(raw);
+  const pt = txt(root, 'paid');
+  const shopInfo = [];
+  if (shop) kids(shop).filter(c => c.localName !== 'name').forEach(c => {
+    const pre = c.localName === 'phone' ? 'Ph: ' : c.localName === 'gstin' ? 'GSTIN: ' : '';
+    c.textContent.split('\n').map(s => s.trim()).filter(Boolean).forEach((s, i) => shopInfo.push({ t: i ? s : pre + s, ln: Ln(c) }));
+  });
+  return {
+    cur: txt(root, 'currency') || '₹',
+    name: txt(shop || root, 'name') || 'Bill',
+    shopLines: shopInfo.map(x => x.t),
+    shopLn: shopInfo.map(x => x.ln),
+    nameLn: Ln(kid(shop || root, 'name')),
+    discLn: Ln(kid(root, 'discount')),
+    paidLn: Ln(kid(root, 'paid')),
+    footLn: Ln(kid(root, 'footer')),
+    rootLn: Ln(root),
+    gstin: txt(shop || root, 'gstin'),
+    meta: meta ? kids(meta).map(c => [label(c.localName), c.textContent.trim(), Ln(c)]) : [],
+    items, sub, dlab, disc, taxRows, ro: r2(total - raw), total,
+    paid: pt === '' ? null : num(pt),
+    footer: txt(root, 'footer')
+  };
+}
+
+function billSlip(m, cols) {
+  const L = [];
+  const add = (t, o) => L.push({ a: (o && o.a) || 'l', segs: [seg(t, o)], ln: (o && o.ln) || 0 });
+  const rule = () => L.push({ rule: true });
+  const cur = m.cur === '₹' ? 'Rs ' : m.cur + ' ';
+  const lr2 = (l, r, n) => { n = n || cols; const room = n - r.length - 1; const ll = l.length > room ? l.slice(0, Math.max(room, 1)) : l; return ll + ' '.repeat(Math.max(1, n - ll.length - r.length)) + r; };
+  add(m.name, { a: 'c', b: true, w: m.name.length * 2 <= cols ? 2 : 1, ln: m.nameLn });
+  m.shopLines.forEach((s, i) => wrap(s, cols).forEach(x => add(x, { a: 'c', ln: m.shopLn[i] })));
+  rule();
+  m.meta.forEach(([k, v, ln]) => wrap(k + ': ' + v, cols).forEach(x => add(x, { ln })));
+  rule();
+  add(lr2('Item / Qty x Rate', 'Amount'), { b: true });
+  rule();
+  m.items.forEach(i => {
+    wrap(i.name, cols).forEach(x => add(x, { ln: i.ln }));
+    add(lr2('  ' + i.qty + ' x ' + f2(i.rate), f2(i.amt)), { ln: i.ln });
+  });
+  rule();
+  add(lr2('Subtotal', f2(m.sub)), { ln: m.rootLn });
+  if (m.disc) add(lr2(m.dlab, '-' + f2(m.disc)), { ln: m.discLn });
+  m.taxRows.forEach(t => add(lr2(t.n, f2(t.a)), { ln: t.ln }));
+  if (m.ro) add(lr2('Round off', (m.ro > 0 ? '+' : '') + f2(m.ro)), { ln: m.rootLn });
+  rule();
+  add(lr2('TOTAL', cur + f2(m.total), Math.floor(cols / 2)), { b: true, w: 2, ln: m.rootLn });
+  if (m.paid != null) {
+    add(lr2('Paid', f2(m.paid)), { ln: m.paidLn });
+    add(m.paid >= m.total ? lr2('Change', f2(m.paid - m.total)) : lr2('Balance due', f2(m.total - m.paid)), { ln: m.paidLn });
+  }
+  if (m.footer) { rule(); m.footer.split('\n').forEach(f => wrap(f.trim(), cols).forEach(x => add(x, { a: 'c', ln: m.footLn }))); }
+  L.push({ a: 'l', segs: [] }, { a: 'l', segs: [] });
+  return [L];
+}
+
+function invoiceDom(m) {
+  const tag = (e, ln) => { if (ln) e.dataset.ln = ln; return e; };
+  const sheet = tag(el('div', 'a4'), m.rootLn);
+  const head = el('div', 'head');
+  const shop = el('div');
+  shop.appendChild(tag(el('h1', '', m.name), m.nameLn));
+  m.shopLines.forEach((s, i) => shop.appendChild(tag(el('div', 'sl', s), m.shopLn[i])));
+  head.append(shop, el('div', 'kind', m.gstin ? 'TAX INVOICE' : 'INVOICE'));
+  sheet.appendChild(head);
+  if (m.meta.length) {
+    const dl = el('dl', 'meta');
+    m.meta.forEach(([k, v, ln]) => { const d = tag(el('div'), ln); d.append(el('dt', '', k), el('dd', '', v)); dl.appendChild(d); });
+    sheet.appendChild(dl);
+  }
+  const t = el('table');
+  const hr = el('tr');
+  [['#', ''], ['Item', ''], ['Qty', 'n'], ['Rate', 'n'], ['Amount', 'n']].forEach(([h, c]) => hr.appendChild(el('th', c, h)));
+  const thead = el('thead'); thead.appendChild(hr); t.appendChild(thead);
+  const tb = el('tbody');
+  m.items.forEach((i, idx) => {
+    const r = tag(el('tr'), i.ln);
+    r.append(el('td', '', String(idx + 1)), el('td', '', i.name), el('td', 'n', String(i.qty)), el('td', 'n', fin(i.rate)), el('td', 'n', fin(i.amt)));
+    tb.appendChild(r);
+  });
+  t.appendChild(tb);
+  sheet.appendChild(t);
+  const tot = el('div', 'tot');
+  const line = (l, v, c, ln) => { const d = tag(el('div', c), ln); d.append(el('span', '', l), el('span', '', v)); tot.appendChild(d); };
+  line('Subtotal', m.cur + ' ' + fin(m.sub), '', m.rootLn);
+  if (m.disc) line(m.dlab, '-' + fin(m.disc), '', m.discLn);
+  m.taxRows.forEach(x => line(x.n, fin(x.a), '', x.ln));
+  if (m.ro) line('Round off', (m.ro > 0 ? '+' : '') + f2(m.ro), '', m.rootLn);
+  line('Total', m.cur + ' ' + fin(m.total), 'g', m.rootLn);
+  if (m.paid != null) line(m.paid >= m.total ? 'Change' : 'Balance due', fin(Math.abs(m.paid - m.total)), '', m.paidLn);
+  sheet.appendChild(tot);
+  const w = el('div', 'words');
+  w.append(el('b', '', 'Amount in words: '), document.createTextNode((m.cur === '₹' ? 'Rupees ' : '') + words(Math.abs(m.total)) + ' Only'));
+  sheet.appendChild(w);
+  const foot = el('div', 'foot');
+  foot.append(tag(el('div', '', m.footer || ''), m.footLn), el('div', 'sign', 'Authorised signatory'));
+  sheet.appendChild(foot);
+  return sheet;
+}
+
+
+/* ---------- POS "Commands" XML adapter ----------
+   Walks <Command name="..."/> elements in order, keeps printer state (font, size, alignment, margin, position)
+   and produces blocks measured in printer dots. 1 dot = 1/8 mm. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const p2 = n => String(n).padStart(2, '0');
+const fmtDate = (d, f) => f.replace(/yyyy|yy|MMM|MM|dd|HH|mm|ss/g, t => ({
+  yyyy: d.getFullYear(), yy: String(d.getFullYear()).slice(-2), MMM: MONTHS[d.getMonth()], MM: p2(d.getMonth() + 1),
+  dd: p2(d.getDate()), HH: p2(d.getHours()), mm: p2(d.getMinutes()), ss: p2(d.getSeconds())
+}[t]));
+function fmtVal(v, f) {
+  if (v == null) return '';
+  if (f) {
+    if (/yy|dd|HH|MMM/.test(f)) { const d = new Date(v); return isNaN(d) ? String(v) : fmtDate(d, f); }
+    const n = Number(v);
+    if (v !== '' && !isNaN(n)) return n.toFixed((f.split('.')[1] || '').length);
+  }
+  return String(v);
+}
+const atr = (e, k) => { for (const a of e.attributes) if (a.name.toLowerCase() === k.toLowerCase()) return a.value; return null; };
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const imgKey = n => String(n || '').split(/[\\/]/).pop().trim().toLowerCase();
+
+function posRun(root, data, pdots, lineOf) {
+  let curLn = 0;
+  const warns = [], missing = [], loops = [], imgs = new Map();
+  const warn = m => { if (!warns.includes(m)) warns.push(m); };
+  const miss = k => {
+    warn('Missing value: ' + k);
+    const sc = loops.length ? loops[loops.length - 1] : null;
+    if (!missing.some(m => m.key === k && m.scope === sc)) missing.push({ key: k, scope: sc });
+  };
+  const out = [], ctx = [data || {}];
+  const st = { font: 'large', X: 1, Y: 1, al: 'l', margin: 0 };
+  let line = null, def = null;
+  const cell = () => st.font === 'small' ? { w: 9, h: 17 } : { w: 12, h: 24 };
+  const lookup = k => {
+    for (let i = ctx.length - 1; i >= 0; i--) {
+      const o = ctx[i];
+      if (o && typeof o === 'object') {
+        if (k in o) return o[k];
+        const lk = Object.keys(o).find(x => x.toLowerCase() === k.toLowerCase());
+        if (lk) return o[lk];
+      }
+    }
+    return undefined;
+  };
+  const ensure = () => line || (line = { al: st.al, start: st.margin, x: st.margin, segs: [], h: 0, pos: false });
+  const flush = () => {
+    if (!line) return;
+    const L = line; line = null;
+    if (!L.segs.length && !L.h) return;
+    let sh = 0;
+    if (!L.pos && L.al !== 'l') { const free = pdots - L.start - (L.x - L.start); sh = L.al === 'c' ? free / 2 : free; }
+    out.push({ type: 'line', h: L.h || cell().h, ln: L.segs.length ? L.segs[L.segs.length - 1].ln : curLn, segs: L.segs.map(s => ({ ...s, x: s.x + Math.max(0, sh) })) });
+  };
+  const blank = () => out.push({ type: 'blank', h: cell().h * st.Y, ln: curLn });
+  const addSeg = (L, t, c) => { L.segs.push({ x: L.x, t, cw: c.w, ch: c.h, X: st.X, Y: st.Y, ln: curLn }); L.x += t.length * c.w * st.X; L.h = Math.max(L.h, c.h * st.Y); };
+  const emit = text => {
+    const c = cell(), cw = c.w * st.X;
+    let rest = text;
+    for (let guard = 0; guard < 400; guard++) {
+      const L = ensure(), room = Math.floor((pdots - L.x) / cw);
+      if (rest.length <= room || (room <= 0 && !L.segs.length)) { addSeg(L, rest, c); return; }
+      if (room > 0) { addSeg(L, rest.slice(0, room), c); rest = rest.slice(room); warn('Some text is wider than this paper and was wrapped to the next line.'); }
+      flush();
+    }
+  };
+  const resolve = (el, key) => {
+    const mp = atr(el, 'Mapping');
+    if (mp) {
+      const v = lookup(mp);
+      if (v === undefined) { miss(mp); return ''; }
+      if (v !== null && typeof v === 'object') { warn('Value is not plain text: ' + mp); return ''; }
+      return v;
+    }
+    const s = atr(el, key) == null ? '' : atr(el, key);
+    return s.replace(/\{(\w+)\}/g, (m, k) => { const v = lookup(k); if (v === undefined) { miss(k); return ''; } return String(v); });
+  };
+  const put = el => {
+    let s = fmtVal(resolve(el, 'String'), atr(el, 'Format'));
+    const n = parseInt(atr(el, 'FixedLen'), 10);
+    if (n > 0) {
+      s = s.slice(0, n);
+      const padn = n - s.length;
+      if (padn > 0) s = /^true$/i.test(atr(el, 'FillOnLeft') || '') ? ' '.repeat(padn) + s : s + ' '.repeat(padn);
+    }
+    emit(s);
+    const lf = atr(el, 'LineFeed');
+    if (lf == null) warn('PrintString without LineFeed was treated as LineFeed="Yes".');
+    if (lf == null || !/^(no|false|0)$/i.test(lf)) flush();
+  };
+  const exec = el => {
+    curLn = lineOf ? lineOf(el) : 0;
+    const raw = atr(el, 'name') || '';
+    switch (raw.toLowerCase()) {
+      case 'reset': flush(); Object.assign(st, { font: 'large', X: 1, Y: 1, al: 'l', margin: 0 }); break;
+      case 'sethalign': { const a = (atr(el, 'Align') || 'left').toLowerCase(); st.al = a[0] === 'c' ? 'c' : a[0] === 'r' ? 'r' : 'l'; if (line && !line.segs.length) line.al = st.al; break; }
+      case 'setfont': { const f = (atr(el, 'Font') || 'large').toLowerCase(); if (!['small', 'medium', 'large'].includes(f)) warn('Unknown font name: ' + f); st.font = f === 'small' ? 'small' : f === 'medium' ? 'medium' : 'large'; break; }
+      case 'setcharsize': st.X = clamp(Math.round(num(atr(el, 'X'))) || 1, 1, 8); st.Y = clamp(Math.round(num(atr(el, 'Y'))) || 1, 1, 8); break;
+      case 'setleftmargin': st.margin = Math.max(0, num(atr(el, 'Margin'))); if (line && !line.segs.length) line.start = line.x = st.margin; break;
+      case 'setposition': { const L = ensure(); L.x = st.margin + Math.max(0, num(atr(el, 'X'))); L.pos = true; break; }
+      case 'printstring': case 'printmoney': put(el); break;
+      case 'linefeed': { flush(); const n = clamp(Math.round(num(atr(el, 'Line'))), 0, 20); for (let i = 0; i < n; i++) blank(); break; }
+      case 'cutpaper': flush(); out.push({ type: 'cut', ln: curLn }); break;
+      case 'defineimage': def = { type: 'logo', ln: curLn, name: atr(el, 'Filename') || 'image' }; if (!imgs.has(imgKey(def.name))) imgs.set(imgKey(def.name), def.name); break;
+      case 'printimagedefined':
+        flush();
+        if (!def) warn('PrintImageDefined was used before any image was defined.');
+        else out.push({ type: 'img', def, al: st.al, ln: def.ln || curLn });
+        break;
+      case 'printbarcodeimage': {
+        const mp = atr(el, 'Mapping');
+        const v = mp ? lookup(mp) : (atr(el, 'String') || atr(el, 'Value'));
+        if (v === undefined || v === null || v === '') warn('Barcode has no value' + (mp ? ': ' + mp : '') + '.');
+        def = {
+          type: 'barcode', ln: curLn, value: v == null ? '' : String(v), w: num(atr(el, 'Width')) || 400, h: num(atr(el, 'Height')) || 100,
+          label: /^true$/i.test(atr(el, 'IncludeLabel') || ''), lsize: num(atr(el, 'LabelFontSize')) || 15,
+          kind: (atr(el, 'BarcodeType') || 'CODE128').toUpperCase()
+        };
+        if (def.kind !== 'CODE128') warn('Barcode type ' + def.kind + ' is drawn as CODE128.');
+        break;
+      }
+      case 'loop': {
+        const on = atr(el, 'On');
+        let arr = on ? lookup(on) : undefined;
+        if (arr === undefined) { warn('Loop data not found: ' + on); break; }
+        if (!Array.isArray(arr)) arr = [arr];
+        loops.push(on);
+        for (const it of arr) { ctx.push(it); [...el.children].forEach(exec); ctx.pop(); }
+        loops.pop();
+        break;
+      }
+      default: warn('Unsupported command: ' + (raw || el.localName));
+    }
+  };
+  [...root.children].forEach(exec);
+  flush();
+  return { blocks: out, warns, missing, images: [...imgs.values()] };
+}
+
+function code128Dom(def, warn, pdots) {
+  const box = el('div', 'bcimg');
+  if (window.JsBarcode && def.value) {
+    try {
+      const svg = document.createElementNS(SVGNS, 'svg');
+      JsBarcode(svg, def.value, { format: 'CODE128', width: 1, height: 10, displayValue: false, margin: 0 });
+      const mods = parseFloat(svg.getAttribute('width')) || 100;
+      const k = pdots && def.w > pdots ? pdots / def.w : 1;
+      if (k < 1) warn('Barcode Width ' + def.w + ' is wider than the paper, so it was scaled down to fit.');
+      const fs = Math.max(8, def.lsize * k);
+      const m = Math.max(1, Math.floor(def.w * k / mods));
+      const lh = def.label ? fs + 6 : 0;
+      JsBarcode(svg, def.value, {
+        format: 'CODE128', width: m, height: Math.max(10, def.h * k - lh), displayValue: def.label, fontSize: fs,
+        margin: 0, textMargin: 2, background: 'transparent', lineColor: 'currentColor'
+      });
+      const w = svg.getAttribute('width'), h = svg.getAttribute('height');
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.removeAttribute('width'); svg.removeAttribute('height');
+      svg.style.width = 'calc(' + w + ' * var(--dot))';
+      svg.style.height = 'calc(' + h + ' * var(--dot))';
+      svg.style.maxWidth = '100%';
+      box.appendChild(svg);
+      return box;
+    } catch (e) {
+      warn('Barcode "' + def.value + '" is not valid CODE128 text.');
+    }
+  } else if (def.value) {
+    warn('Barcode library could not load, so a placeholder barcode is shown.');
+  }
+  box.appendChild(barcodeDom({ a: 'c', bc: def.value || '?', h: def.h }));
+  return box;
+}
+
+function posDom(res, o) {
+  const s = el('div', 'slip pos');
+  s.style.setProperty('--paper-w', o.paper);
+  s.style.setProperty('--pad', o.pad);
+  res.blocks.forEach(b => {
+    if (b.type === 'blank' || b.type === 'line') {
+      const d = el('div', 'pl');
+      if (b.ln) d.dataset.ln = b.ln;
+      d.style.height = 'calc(' + b.h + ' * var(--dot))';
+      if (b.segs) b.segs.forEach(g => {
+        if (!g.t) return;
+        const sp = el('span', '', g.t);
+        if (g.ln) sp.dataset.ln = g.ln;
+        sp.style.left = 'calc(' + g.x + ' * var(--dot))';
+        sp.style.fontSize = 'calc(' + (g.cw / 0.6) + ' * var(--dot))';
+        sp.style.lineHeight = 'calc(' + g.ch + ' * var(--dot))';
+        if (g.X !== 1 || g.Y !== 1) sp.style.transform = 'scale(' + g.X + ',' + g.Y + ')';
+        d.appendChild(sp);
+      });
+      s.appendChild(d);
+    } else if (b.type === 'cut') {
+      if (o.cut) { const cl = el('div', 'cutline', 'cut here'); if (b.ln) cl.dataset.ln = b.ln; s.appendChild(cl); }
+    } else if (b.type === 'img') {
+      const row = el('div', 'imgrow');
+      if (b.ln) row.dataset.ln = b.ln;
+      row.style.justifyContent = b.al === 'c' ? 'center' : b.al === 'r' ? 'flex-end' : 'flex-start';
+      if (b.def.type === 'barcode') row.appendChild(code128Dom(b.def, o.warn, o.pdots));
+      else if (o.images && o.images[imgKey(b.def.name)]) {
+        const u = o.images[imgKey(b.def.name)];
+        const im = el('img');
+        im.src = u.url; im.alt = b.def.name;
+        im.style.width = 'calc(' + Math.min(u.w, o.pdots) + ' * var(--dot))';
+        im.style.height = 'auto';
+        row.appendChild(im);
+      } else {
+        const bx = el('div', 'imgbox', b.def.name + ' (image not uploaded)');
+        bx.style.width = 'calc(' + Math.min(o.pdots, 300) + ' * var(--dot))';
+        bx.style.height = 'calc(40 * var(--dot))';
+        row.appendChild(bx);
+        o.warn('Image "' + b.def.name + '" has not been uploaded. Open the Images tab to add it.');
+      }
+      s.appendChild(row);
+    }
+  });
+  return s;
+}
+
+
+/* ---------- Drawing ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function barcodeDom(l) {
+  const bars = [];
+  let x = 0;
+  const unit = (n, dark) => { if (dark) bars.push([x, n]); x += n; };
+  [1, 1, 3, 1].forEach((n, i) => unit(n, i % 2 === 0));
+  for (const ch of l.bc) {
+    const c = ch.charCodeAt(0);
+    for (let k = 0; k < 6; k++) unit(((c >> k) & 1) + 1 + (k % 3 === 0 ? 1 : 0), k % 2 === 0);
+    unit(1, false);
+  }
+  [3, 1, 1, 1].forEach((n, i) => unit(n, i % 2 === 0));
+  const hmm = Math.max(8, l.h / 8);
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + x + ' 10');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.width = 'calc(' + (x * 0.3) + ' * var(--mm))';
+  svg.style.height = 'calc(' + hmm + ' * var(--mm))';
+  bars.forEach(([bx, bw]) => {
+    const r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute('x', bx); r.setAttribute('y', 0); r.setAttribute('width', bw); r.setAttribute('height', 10);
+    svg.appendChild(r);
+  });
+  const d = el('div', 'bc ' + (l.a || 'l'));
+  d.append(svg, el('span', '', l.bc));
+  return d;
+}
+function qrDom(l) {
+  const N = 21;
+  let seed = 7;
+  for (const ch of l.qr) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 16) & 1; };
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 ' + N + ' ' + N);
+  svg.style.width = 'calc(26 * var(--mm))';
+  svg.style.height = 'calc(26 * var(--mm))';
+  const finder = (x, y) => (x < 7 && y < 7) || (x >= N - 7 && y < 7) || (x < 7 && y >= N - 7);
+  const finderOn = (x, y) => {
+    const fx = x >= N - 7 ? x - (N - 7) : x, fy = y >= N - 7 ? y - (N - 7) : y;
+    const ring = Math.max(Math.abs(fx - 3), Math.abs(fy - 3));
+    return ring !== 2;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const on = finder(x, y) ? finderOn(x, y) : rnd() === 1;
+    if (!on) continue;
+    const r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', 1); r.setAttribute('height', 1);
+    svg.appendChild(r);
+  }
+  const d = el('div', 'qr ' + (l.a || 'l'));
+  d.append(svg);
+  return d;
+}
+function slipDom(lines, paper, pad) {
+  const s = el('div', 'slip');
+  s.style.setProperty('--paper-w', paper);
+  s.style.setProperty('--pad', pad);
+  lines.forEach(l => {
+    const tag = x => { if (l.ln) x.dataset.ln = l.ln; return x; };
+    if (l.rule) { s.appendChild(tag(el('div', 'rule'))); return; }
+    if (l.bc != null) { s.appendChild(tag(barcodeDom(l))); return; }
+    if (l.qr != null) { s.appendChild(tag(qrDom(l))); return; }
+    const d = tag(el('div', 'ln' + (l.a === 'c' ? ' c' : l.a === 'r' ? ' r' : '')));
+    if (!l.segs.length) d.textContent = '​';
+    l.segs.forEach(g => {
+      const sp = el('span', [g.b ? 'b' : '', g.u ? 'u' : '', g.v ? 'v' : ''].filter(Boolean).join(' '), g.t);
+      if (g.ln) sp.dataset.ln = g.ln;
+      if (g.w > 1) sp.style.fontSize = g.w + 'em';
+      d.appendChild(sp);
+    });
+    s.appendChild(d);
+  });
+  return s;
+}
+
+
+
+/* ---------- DevExpress REPX adapter ----------
+   Reads XtraReports layout files (.repx): bands, groups, labels, tables, barcodes, pictures, lines, page info, summaries. */
+const REPX_UNIT = { hundredthsofaninch: 0.254, tenthsofamillimeter: 0.1, pixels: 25.4 / 96, inches: 25.4, millimeters: 1, points: 25.4 / 72, documents: 25.4 / 300, display: 25.4 / 75 };
+const REPX_UNIT_LABEL = { hundredthsofaninch: '1/100 in', tenthsofamillimeter: '0.1 mm', pixels: 'px', inches: 'in', millimeters: 'mm', points: 'pt', documents: '1/300 in', display: '1/75 in' };
+const isRepx = root => /^XtraReportsLayoutSerializer$/i.test(root.localName) || /XtraReport\s*,/i.test(atr(root, 'ControlType') || '');
+const cType = e => (atr(e, 'ControlType') || '').split(',')[0].trim().replace(/^.*\./, '');
+const subItems = (e, n) => { const c = kid(e, n); return c ? [...c.children] : []; };
+const nums = s => String(s == null ? '' : s).split(',').map(x => parseFloat(x));
+const geom = e => {
+  const a = nums(atr(e, 'SizeF') || atr(e, 'Size')), b = nums(atr(e, 'LocationFloat') || atr(e, 'Location'));
+  return { x: b[0] || 0, y: b[1] || 0, w: a[0] || 0, h: a[1] || 0 };
+};
+const lastSeg = s => String(s || '').split('.').pop();
+
+function repxColor(v) {
+  if (!v) return '';
+  v = String(v).trim();
+  let m = /^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)$/.exec(v);
+  if (m) return 'rgba(' + m[2] + ',' + m[3] + ',' + m[4] + ',' + (m[1] / 255).toFixed(3) + ')';
+  m = /^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)$/.exec(v);
+  if (m) return 'rgb(' + v + ')';
+  if (/^[A-Za-z]+$/.test(v) && window.CSS && CSS.supports && CSS.supports('color', v)) return v;
+  return '';
+}
+function repxFont(s, base) {
+  const f = { fam: (base && base.fam) || 'Arial', pt: (base && base.pt) || 9.75, b: !!(base && base.b), i: !!(base && base.i), u: !!(base && base.u) };
+  if (!s) return f;
+  const p = String(s).split(',').map(x => x.trim());
+  if (p[0]) f.fam = p[0];
+  if (p[1]) { const n = parseFloat(p[1]); if (!isNaN(n)) f.pt = /px$/i.test(p[1]) ? n * 0.75 : n; }
+  const st = p.slice(2).join(',').toLowerCase();
+  f.b = /bold/.test(st); f.i = /italic/.test(st); f.u = /underline/.test(st);
+  return f;
+}
+function repxAlign(a) {
+  a = String(a || 'TopLeft');
+  return {
+    v: /^Top/.test(a) ? 'flex-start' : /^Bottom/.test(a) ? 'flex-end' : 'center',
+    h: /Center$/.test(a) ? 'center' : /Right$/.test(a) ? 'right' : /Justify$/.test(a) ? 'justify' : 'left'
+  };
+}
+function fmtSpec(v, spec) {
+  if (spec == null || spec === '') return v instanceof Date ? fmtDate(v, 'dd/MM/yyyy HH:mm') : String(v);
+  const n = typeof v === 'number' ? v : (v === '' || v === null || typeof v === 'boolean' || v instanceof Date ? NaN : Number(v));
+  const m = /^([NnFfCcPp])(\d*)$/.exec(spec);
+  if (m) {
+    if (isNaN(n)) return String(v);
+    const d = m[2] === '' ? 2 : +m[2], t = m[1].toUpperCase();
+    if (t === 'F') return n.toFixed(d);
+    if (t === 'P') return (n * 100).toFixed(d) + '%';
+    return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  if (/^[#0,.%]+$/.test(spec)) {
+    if (isNaN(n)) return String(v);
+    const dec = (spec.split('.')[1] || '').replace(/[^0#]/g, '').length;
+    let s = Math.abs(n).toFixed(dec);
+    if (spec.indexOf(',') >= 0) { const q = s.split('.'); s = q[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (q[1] ? '.' + q[1] : ''); }
+    return (n < 0 ? '-' : '') + s;
+  }
+  if (/[yMdHhms]/.test(spec)) { const d = v instanceof Date ? v : new Date(v); return isNaN(d) ? String(v) : fmtDate(d, spec); }
+  return String(v);
+}
+function repxFormat(v, fmt, cx) {
+  if (v == null) return '';
+  if (!fmt) return v instanceof Date ? fmtDate(v, 'dd/MM/yyyy HH:mm') : String(v);
+  return fmt.replace(/\{(\d+)(?::([^}]*))?\}/g, (m, i, spec) => i === '0' ? fmtSpec(v, spec) : (i === '1' && cx && cx.pages != null ? String(cx.pages) : ''));
+}
+
+/* ----- expression language (a safe subset of DevExpress criteria syntax) ----- */
+function exTok(s) {
+  s = String(s);
+  const t = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i], rest = s.slice(i);
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '[') {
+      let j = s.indexOf(']', i); if (j < 0) throw new Error('Missing ]');
+      let name = s.slice(i + 1, j), mm;
+      while ((mm = /^\s*\.\s*\[/.exec(s.slice(j + 1)))) { const j2 = s.indexOf(']', j + 1 + mm[0].length); if (j2 < 0) throw new Error('Missing ]'); name += '.' + s.slice(j + 1 + mm[0].length, j2); j = j2; }
+      t.push({ k: 'f', v: name }); i = j + 1; continue;
+    }
+    if (c === "'") {
+      let j = i + 1, out = '';
+      while (j < s.length) { if (s[j] === "'") { if (s[j + 1] === "'") { out += "'"; j += 2; continue; } break; } out += s[j++]; }
+      t.push({ k: 's', v: out }); i = j + 1; continue;
+    }
+    let m = /^\?[A-Za-z_][\w.]*/.exec(rest);
+    if (m) { t.push({ k: 'f', v: m[0].slice(1) }); i += m[0].length; continue; }
+    if (c === '#') { const j = s.indexOf('#', i + 1); if (j > 0) { t.push({ k: 's', v: s.slice(i + 1, j) }); i = j + 1; continue; } }
+    m = /^\d+(\.\d+)?/.exec(rest);
+    if (m) { t.push({ k: 'n', v: parseFloat(m[0]) }); i += m[0].length; continue; }
+    m = /^[A-Za-z_]\w*/.exec(rest);
+    if (m) { t.push({ k: 'i', v: m[0] }); i += m[0].length; continue; }
+    m = /^(<>|!=|==|<=|>=|&&|\|\||[-+*\/%<>=(),!])/.exec(rest);
+    if (m) { t.push({ k: 'o', v: m[0] }); i += m[0].length; continue; }
+    throw new Error('Unexpected "' + c + '"');
+  }
+  return t;
+}
+function exParse(src) {
+  const t = exTok(src);
+  let p = 0;
+  const isOp = v => t[p] && t[p].k === 'o' && t[p].v === v;
+  const isKw = v => t[p] && t[p].k === 'i' && t[p].v.toLowerCase() === v;
+  const or = () => { let l = and(); while (isKw('or') || isOp('||')) { p++; l = { t: 'bin', op: 'or', l, r: and() }; } return l; };
+  const and = () => { let l = not(); while (isKw('and') || isOp('&&')) { p++; l = { t: 'bin', op: 'and', l, r: not() }; } return l; };
+  const not = () => { if (isKw('not') || isOp('!')) { p++; return { t: 'un', op: 'not', x: not() }; } return cmp(); };
+  const cmp = () => {
+    let l = add();
+    while (t[p] && t[p].k === 'o' && ['=', '==', '!=', '<>', '<', '>', '<=', '>='].includes(t[p].v)) { const op = t[p++].v; l = { t: 'bin', op, l, r: add() }; }
+    return l;
+  };
+  const add = () => { let l = mul(); while (isOp('+') || isOp('-')) { const op = t[p++].v; l = { t: 'bin', op, l, r: mul() }; } return l; };
+  const mul = () => { let l = un(); while (isOp('*') || isOp('/') || isOp('%')) { const op = t[p++].v; l = { t: 'bin', op, l, r: un() }; } return l; };
+  const un = () => { if (isOp('-')) { p++; return { t: 'un', op: '-', x: un() }; } return prim(); };
+  const prim = () => {
+    const k = t[p++];
+    if (!k) throw new Error('The expression ends too early');
+    if (k.k === 'n' || k.k === 's') return { t: 'lit', v: k.v };
+    if (k.k === 'f') return { t: 'f', name: k.v };
+    if (k.k === 'o' && k.v === '(') { const e = or(); if (!isOp(')')) throw new Error('Missing )'); p++; return e; }
+    if (k.k === 'i') {
+      const w = k.v.toLowerCase();
+      if (w === 'true') return { t: 'lit', v: true };
+      if (w === 'false') return { t: 'lit', v: false };
+      if (w === 'null') return { t: 'lit', v: null };
+      if (!isOp('(')) throw new Error('Unknown word "' + k.v + '"');
+      p++;
+      const args = [];
+      if (!isOp(')')) { for (;;) { args.push(or()); if (isOp(',')) { p++; continue; } break; } }
+      if (!isOp(')')) throw new Error('Missing ) after ' + k.v);
+      p++;
+      return { t: 'call', name: k.v, args };
+    }
+    throw new Error('Unexpected "' + k.v + '"');
+  };
+  const r = or();
+  if (p < t.length) throw new Error('Unexpected "' + t[p].v + '"');
+  return r;
+}
+const EXC = new Map();
+function exCompile(src) {
+  if (!EXC.has(src)) { try { EXC.set(src, { ast: exParse(src) }); } catch (e) { EXC.set(src, { err: e.message }); } }
+  return EXC.get(src);
+}
+const truthy = v => v === true || (typeof v === 'number' ? v !== 0 : typeof v === 'string' ? v !== '' && v.toLowerCase() !== 'false' : false);
+const numish = v => v !== '' && v !== null && typeof v !== 'boolean' && !(v instanceof Date) && !isNaN(Number(v));
+const sv = v => v == null ? '' : v instanceof Date ? fmtDate(v, 'yyyy-MM-dd HH:mm:ss') : String(v);
+const looseEq = (a, b) => (a == null || b == null) ? a == b : (numish(a) && numish(b)) ? Number(a) === Number(b) : sv(a).toLowerCase() === sv(b).toLowerCase();
+const cmpv = (a, b) => (numish(a) && numish(b)) ? Number(a) - Number(b) : sv(a).toLowerCase().localeCompare(sv(b).toLowerCase());
+function exEval(a, cx) {
+  const ev = x => exEval(x, cx);
+  switch (a.t) {
+    case 'lit': return a.v;
+    case 'f': return cx.fv(a.name, cx);
+    case 'un': { const v = ev(a.x); return a.op === 'not' ? !truthy(v) : -num(v); }
+    case 'bin': {
+      if (a.op === 'and') return truthy(ev(a.l)) && truthy(ev(a.r));
+      if (a.op === 'or') return truthy(ev(a.l)) || truthy(ev(a.r));
+      const l = ev(a.l), r = ev(a.r);
+      switch (a.op) {
+        case '+': return (typeof l === 'number' && typeof r === 'number') ? l + r : sv(l) + sv(r);
+        case '-': return num(l) - num(r);
+        case '*': return num(l) * num(r);
+        case '/': return num(r) === 0 ? 0 : num(l) / num(r);
+        case '%': return num(r) === 0 ? 0 : num(l) % num(r);
+        case '=': case '==': return looseEq(l, r);
+        case '!=': case '<>': return !looseEq(l, r);
+        default: { const c = cmpv(l, r); return a.op === '<' ? c < 0 : a.op === '>' ? c > 0 : a.op === '<=' ? c <= 0 : c >= 0; }
+      }
+    }
+    case 'call': return exCall(a.name, a.args, cx);
+  }
+  return null;
+}
+function exCall(name, args, cx) {
+  const n = name.toLowerCase();
+  const ev = x => exEval(x, cx);
+  if (n === 'iif') {
+    for (let i = 0; i + 1 < args.length; i += 2) if (truthy(ev(args[i]))) return ev(args[i + 1]);
+    return args.length % 2 ? ev(args[args.length - 1]) : null;
+  }
+  const agg = fn => fn((cx.recs || []).map((r, i) => exEval(args[0], Object.assign({}, cx, { rec: r, idx: i }))));
+  const round6 = x => +x.toFixed(6);
+  switch (n) {
+    case 'sumsum': return agg(v => round6(v.reduce((s, x) => s + num(x), 0)));
+    case 'sumavg': return agg(v => v.length ? round6(v.reduce((s, x) => s + num(x), 0) / v.length) : 0);
+    case 'summin': return agg(v => v.length ? Math.min(...v.map(num)) : 0);
+    case 'summax': return agg(v => v.length ? Math.max(...v.map(num)) : 0);
+    case 'sumcount': return (cx.recs || []).length;
+    case 'sumrecordnumber': return (cx.idx || 0) + 1;
+    case 'now': return new Date();
+    case 'today': { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+    case 'tostr': return sv(ev(args[0]));
+    case 'toint': return Math.trunc(num(ev(args[0])));
+    case 'todecimal': case 'todouble': case 'tofloat': return num(ev(args[0]));
+    case 'round': return +num(ev(args[0])).toFixed(args[1] ? num(ev(args[1])) : 0);
+    case 'floor': return Math.floor(num(ev(args[0])));
+    case 'ceiling': return Math.ceil(num(ev(args[0])));
+    case 'abs': return Math.abs(num(ev(args[0])));
+    case 'max': return Math.max(...args.map(x => num(ev(x))));
+    case 'min': return Math.min(...args.map(x => num(ev(x))));
+    case 'upper': return sv(ev(args[0])).toUpperCase();
+    case 'lower': return sv(ev(args[0])).toLowerCase();
+    case 'trim': return sv(ev(args[0])).trim();
+    case 'len': return sv(ev(args[0])).length;
+    case 'concat': return args.map(x => sv(ev(x))).join('');
+    case 'substring': { const s = sv(ev(args[0])), a = num(ev(args[1])); return args[2] ? s.substr(a, num(ev(args[2]))) : s.substr(a); }
+    case 'contains': return sv(ev(args[0])).toLowerCase().includes(sv(ev(args[1])).toLowerCase());
+    case 'startswith': return sv(ev(args[0])).toLowerCase().startsWith(sv(ev(args[1])).toLowerCase());
+    case 'endswith': return sv(ev(args[0])).toLowerCase().endsWith(sv(ev(args[1])).toLowerCase());
+    case 'replace': return sv(ev(args[0])).split(sv(ev(args[1]))).join(sv(ev(args[2])));
+    case 'isnullorempty': { const v = ev(args[0]); return v == null || v === ''; }
+    case 'formatstring': { const vals = args.slice(1).map(ev); return sv(ev(args[0])).replace(/\{(\d+)(?::([^}]*))?\}/g, (m, i, sp) => vals[+i] == null ? '' : fmtSpec(vals[+i], sp)); }
+    default: throw new Error('Function ' + name + ' is not supported');
+  }
+}
+
+/* ----- layout and drawing ----- */
+function repxRun(root, data, o) {
+  const warn = o.warn;
+  const uname = String(atr(root, 'ReportUnit') || 'HundredthsOfAnInch').toLowerCase();
+  const K = REPX_UNIT[uname] || 0.254;
+  const mm = v => v * K;
+  const cm = v => 'calc(' + (+v).toFixed(3) + ' * var(--mm))';
+  const vis = e => !/^false$/i.test(atr(e, 'Visible') || 'true');
+  const pageW = mm(num(atr(root, 'PageWidth')) || 827), pageH0 = mm(num(atr(root, 'PageHeight')) || 1169);
+  const mg = nums(atr(root, 'Margins'));
+  const bands = subItems(root, 'Bands');
+  const kindOf = b => ({ TopMarginBand: 'top', BottomMarginBand: 'bottom', ReportHeaderBand: 'rh', ReportFooterBand: 'rf', PageHeaderBand: 'ph', PageFooterBand: 'pf', GroupHeaderBand: 'gh', GroupFooterBand: 'gf', DetailBand: 'd', DetailReportBand: 'dr' })[cType(b)] || '';
+  const bH = b => mm(num(atr(b, 'HeightF') || atr(b, 'Height')));
+  const find = k => bands.find(b => kindOf(b) === k);
+  const lvl = b => num(atr(b, 'Level'));
+  const byLevel = (a, b) => lvl(a) - lvl(b);
+  const topB = find('top'), botB = find('bottom'), phB = find('ph'), pfB = find('pf'), rhB = find('rh'), rfB = find('rf');
+  const mL = mm(isNaN(mg[0]) ? 100 : mg[0]), mR = mm(isNaN(mg[1]) ? 100 : mg[1]);
+  const mT = topB ? bH(topB) : mm(isNaN(mg[2]) ? 100 : mg[2]), mB = botB ? bH(botB) : mm(isNaN(mg[3]) ? 100 : mg[3]);
+  const cw = pageW - mL - mR;
+  const roll = /^true$/i.test(atr(root, 'RollPaper') || '');
+  bands.forEach(b => { if (!kindOf(b)) warn('Band type ' + (cType(b) || '?') + ' is not supported and was skipped.'); });
+
+  const pick = (member, src) => {
+    const keys = Object.keys(src || {});
+    const want = lastSeg(member).toLowerCase();
+    let k = want ? keys.find(x => x.toLowerCase() === want && Array.isArray(src[x])) : null;
+    if (!k && !want) k = keys.find(x => x === 'Legs' && Array.isArray(src[x])) || keys.find(x => Array.isArray(src[x]) && src[x].length && src[x][0] && typeof src[x][0] === 'object');
+    return k ? { name: k, recs: src[k] } : (want ? { name: want, recs: [] } : { name: null, recs: [src || {}] });
+  };
+  const fieldVal = (name, cx) => {
+    const low = name.toLowerCase();
+    if (low === 'datasource.currentrowindex') return cx.idx || 0;
+    if (low === 'datasource.rowcount') return (cx.recs || []).length;
+    const keys = [name, lastSeg(name)];
+    for (const k of keys) {
+      for (const src of [cx.rec, cx.parent, cx.data]) {
+        if (src && typeof src === 'object' && !Array.isArray(src)) {
+          if (k in src) return src[k];
+          const lk = Object.keys(src).find(x => x.toLowerCase() === k.toLowerCase());
+          if (lk) return src[lk];
+        }
+      }
+    }
+    const cf = calcs[lastSeg(name).toLowerCase()];
+    if (cf) { if (cf.busy) return null; cf.busy = true; try { return evalExpr(cf.expr, cx, root); } finally { cf.busy = false; } }
+    o.miss(lastSeg(name), cx.scope || null);
+    return null;
+  };
+  const calcs = {};
+  subItems(root, 'CalculatedFields').forEach(it => {
+    const ex = atr(it, 'Expression'); if (!ex) return;
+    [atr(it, 'Name'), atr(it, 'DisplayName')].forEach(n => { if (n) calcs[n.toLowerCase()] = { expr: ex }; });
+  });
+  const mk = (rec, idx, recs, parent, scope) => ({ rec, idx, recs, parent, scope, data, fv: fieldVal });
+  const evalExpr = (src, cx, ctl) => {
+    const c = exCompile(String(src || ''));
+    if (c.err) { warn('Expression problem in ' + (atr(ctl, 'Name') || 'a control') + ': ' + c.err); return '#ERROR'; }
+    try { return exEval(c.ast, cx); } catch (e) { warn('Expression problem in ' + (atr(ctl, 'Name') || 'a control') + ': ' + e.message); return '#ERROR'; }
+  };
+
+  /* 1. Flow: which bands print, in what order */
+  const flow = [];
+  const push = (b, cx) => { const pb = atr(b, 'PageBreak') || ''; if (vis(b)) flow.push({ b, cx, h: bH(b), kind: kindOf(b), brk: /BeforeBand/i.test(pb), after: /AfterBand/i.test(pb) }); };
+  function section(list, recs, name, parent) {
+    const ds = list.filter(b => kindOf(b) === 'd').sort(byLevel);
+    const drs = list.filter(b => kindOf(b) === 'dr');
+    const gfs = list.filter(b => kindOf(b) === 'gf');
+    const groups = list.filter(b => kindOf(b) === 'gh').sort(byLevel).map(h => ({
+      h, f: gfs.find(f => lvl(f) === lvl(h)), fields: subItems(h, 'GroupFields').map(g => atr(g, 'FieldName')).filter(Boolean), key: null, open: false, recs: [], last: null
+    }));
+    const keyOf = (g, rec) => g.fields.map(f => sv(fieldVal(f, mk(rec, 0, recs, parent, name)))).join('\u0001');
+    const close = L => {
+      for (let i = groups.length - 1; i >= L; i--) {
+        const g = groups[i];
+        if (g.open && g.f) push(g.f, mk(g.last.rec, g.last.i, g.recs, parent, name));
+        g.open = false;
+      }
+    };
+    const handled = new Set();
+    recs.forEach((rec, i) => {
+      let ch = -1;
+      groups.forEach((g, L) => { if (ch < 0 && (!g.open || keyOf(g, rec) !== g.key)) ch = L; });
+      if (ch >= 0) {
+        close(ch);
+        for (let L = ch; L < groups.length; L++) {
+          const g = groups[L];
+          g.key = keyOf(g, rec); g.recs = []; g.open = true;
+          push(g.h, mk(rec, i, g.recs, parent, name));
+        }
+      }
+      groups.forEach(g => { g.recs.push(rec); g.last = { rec, i }; });
+      ds.forEach(d => push(d, mk(rec, i, recs, parent, name)));
+      drs.forEach(dr => {
+        const mem = lastSeg(atr(dr, 'DataMember'));
+        if (mem && rec && typeof rec === 'object' && Array.isArray(rec[mem])) { handled.add(dr); section(subItems(dr, 'Bands'), rec[mem], mem, rec); }
+      });
+    });
+    close(0);
+    drs.filter(dr => !handled.has(dr)).forEach(dr => { const p = pick(atr(dr, 'DataMember'), parent || data); section(subItems(dr, 'Bands'), p.recs, p.name, parent); });
+  }
+  const main = pick(atr(root, 'DataMember'), data);
+  section(bands, main.recs, main.name, null);
+  const pcx = mk(null, 0, main.recs, null, null);
+  const items = [];
+  if (rhB && vis(rhB)) items.push({ b: rhB, cx: pcx, h: bH(rhB), kind: 'rh', brk: false, after: false });
+  flow.forEach(f => items.push(f));
+  if (rfB && vis(rfB)) items.push({ b: rfB, cx: pcx, h: bH(rfB), kind: 'rf', brk: /BeforeBand/i.test(atr(rfB, 'PageBreak') || ''), after: false });
+
+  /* 2. Pages */
+  const pfH = pfB && vis(pfB) ? bH(pfB) : 0, phH = phB && vis(phB) ? bH(phB) : 0;
+  const limit = () => pageH0 - mB - pfH;
+  const pages = [];
+  let cur, y, body, phDone = false, force = false;
+  const start = withPH => { cur = { blocks: [], h: pageH0 }; pages.push(cur); y = mT; body = 0; if (withPH && phH) { cur.blocks.push({ b: phB, y, h: phH, cx: pcx }); y += phH; } };
+  start(false);
+  const placePH = () => { phDone = true; if (phH) { cur.blocks.push({ b: phB, y, h: phH, cx: pcx }); y += phH; } };
+  items.forEach(it => {
+    if (!phDone && it.kind !== 'rh') placePH();
+    if (!roll && body && (it.brk || force || y + it.h > limit() + 1e-6)) { start(true); }
+    force = it.after;
+    if (!roll && /^true$/i.test(atr(it.b, 'PrintAtBottom') || '')) y = Math.max(y, limit() - it.h);
+    cur.blocks.push({ b: it.b, y, h: it.h, cx: it.cx });
+    y += it.h; body++;
+  });
+  if (!phDone) placePH();
+  if (roll) { cur.endY = y; cur.h = y + pfH + mB; }
+
+  /* 3. Drawing */
+  const tag = (d, e) => { const l = o.lineOf(e); if (l) d.dataset.ln = l; const i = o.eidOf(e); if (i != null) d.dataset.eid = i; return d; };
+  const box = (d, x, y, w, h) => { const S = d.style; S.left = cm(x); S.top = cm(y); S.width = cm(w); S.height = cm(h); };
+  const unsupported = new Set();
+  function textBinding(c, key) { return subItems(c, key).find(x => /^text$/i.test(atr(x, 'PropertyName') || '')); }
+  function valueOf(c, cx) {
+    const eb = textBinding(c, 'ExpressionBindings'), db = textBinding(c, 'DataBindings');
+    let fmt = atr(c, 'TextFormatString');
+    const one = (rec, i) => {
+      const k = Object.assign({}, cx, { rec, idx: i });
+      if (eb) return evalExpr(atr(eb, 'Expression'), k, c);
+      if (db) return k.fv(atr(db, 'DataMember') || '', k);
+      return atr(c, 'Text');
+    };
+    const sm = kid(c, 'Summary');
+    let v;
+    if (sm && (eb || db)) {
+      const fn = (atr(sm, 'Func') || 'Sum').toLowerCase();
+      const rs = /report/i.test(atr(sm, 'Running') || '') ? (cx.recs || []).slice(0, (cx.idx || 0) + 1) : (cx.recs || []);
+      const vals = rs.map((r, i) => one(r, i));
+      v = fn === 'count' ? vals.length : fn === 'avg' ? (vals.length ? vals.reduce((s, x) => s + num(x), 0) / vals.length : 0)
+        : fn === 'min' ? (vals.length ? Math.min(...vals.map(num)) : 0) : fn === 'max' ? (vals.length ? Math.max(...vals.map(num)) : 0)
+        : fn === 'recordnumber' ? (cx.idx || 0) + 1 : vals.reduce((s, x) => s + num(x), 0);
+      fmt = atr(sm, 'FormatString') || fmt;
+    } else {
+      v = one(cx.rec, cx.idx);
+      if (db && atr(db, 'FormatString')) fmt = atr(db, 'FormatString');
+    }
+    if (typeof v === 'number') v = +v.toFixed(6);
+    return repxFormat(v == null ? '' : v, fmt, cx);
+  }
+  function decorate(d, c, font, defBorders) {
+    const S = d.style;
+    S.fontFamily = '"' + font.fam + '", Arial, "Noto Sans Malayalam", sans-serif';
+    S.fontSize = cm(font.pt * 25.4 / 72);
+    S.fontWeight = font.b ? '700' : '400';
+    S.fontStyle = font.i ? 'italic' : 'normal';
+    S.textDecoration = font.u ? 'underline' : 'none';
+    const fg = repxColor(atr(c, 'ForeColor')), bg = repxColor(atr(c, 'BackColor'));
+    if (fg) S.color = fg;
+    if (bg) S.background = bg;
+    const bd = atr(c, 'Borders') != null ? atr(c, 'Borders') : defBorders;
+    const bw = (num(atr(c, 'BorderWidth')) || 1) * 25.4 / 96;
+    const bcol = repxColor(atr(c, 'BorderColor')) || '#000';
+    ['Left', 'Top', 'Right', 'Bottom'].forEach(s => { if (/\ball\b/i.test(bd || '') || new RegExp(s, 'i').test(bd || '')) S['border' + s] = cm(bw) + ' solid ' + bcol; });
+    const pd = nums(atr(c, 'Padding') || '2,2,0,0,100'), dpi = pd[4] || 100, pm = i => ((isNaN(pd[i]) ? 0 : pd[i]) / dpi * 25.4);
+    S.padding = cm(pm(2)) + ' ' + cm(pm(1)) + ' ' + cm(pm(3)) + ' ' + cm(pm(0));
+  }
+  function textBox(d, c, text) {
+    const al = repxAlign(atr(c, 'TextAlignment'));
+    d.style.alignItems = al.v;
+    const sp = el('span', 'rt', text);
+    sp.style.textAlign = al.h;
+    sp.style.whiteSpace = /^false$/i.test(atr(c, 'WordWrap') || 'true') ? 'pre' : 'pre-wrap';
+    d.appendChild(sp);
+  }
+  function barcodeBox(d, c, val) {
+    const sym = kid(c, 'Symbology'), sname = sym ? atr(sym, 'Name') || '' : 'Code128';
+    const holder = el('div', 'rbc');
+    if (/qr/i.test(sname)) { holder.appendChild(qrDom({ a: 'c', qr: String(val) })); warn('QR codes are drawn as a placeholder pattern.'); }
+    else if (window.JsBarcode && val !== '' && val != null) {
+      try {
+        const svg = document.createElementNS(SVGNS, 'svg');
+        JsBarcode(svg, String(val), { format: 'CODE128', width: 1, height: 40, displayValue: !/^false$/i.test(atr(c, 'ShowText') || 'true'), fontSize: 12, margin: 0, background: 'transparent', lineColor: 'currentColor' });
+        svg.setAttribute('viewBox', '0 0 ' + svg.getAttribute('width') + ' ' + svg.getAttribute('height'));
+        svg.removeAttribute('width'); svg.removeAttribute('height');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        holder.appendChild(svg);
+        if (sname && !/code\s*128/i.test(sname)) warn('Barcode type ' + sname + ' is drawn as Code 128.');
+      } catch (e) { warn('Barcode value "' + val + '" cannot be drawn as Code 128.'); holder.textContent = String(val); }
+    } else { if (val !== '' && val != null) warn('The barcode library could not load, so barcodes are shown as text.'); holder.textContent = String(val == null ? '' : val); }
+    d.appendChild(holder);
+  }
+  function pictureBox(d, c) {
+    const src = atr(c, 'ImageSource') || '', url = atr(c, 'ImageUrl') || '';
+    let data = '';
+    if (/^img,/i.test(src)) {
+      const b = src.slice(4);
+      const mime = b.startsWith('iVBOR') ? 'png' : b.startsWith('/9j/') ? 'jpeg' : b.startsWith('R0lG') ? 'gif' : b.startsWith('Qk') ? 'bmp' : 'png';
+      data = 'data:image/' + mime + ';base64,' + b;
+    } else if (url && o.images[imgKey(url)]) data = o.images[imgKey(url)].url;
+    if (!data) {
+      const name = url || atr(c, 'Name') || 'picture';
+      if (url) o.needImg(url);
+      d.classList.add('ph');
+      d.appendChild(el('span', 'rt', name + (url ? ' (not uploaded)' : ' (no image in file)')));
+      warn('Picture "' + name + '" has no image, so only its outline is shown.');
+      return;
+    }
+    const im = el('img');
+    im.src = data; im.alt = atr(c, 'Name') || '';
+    const sz = (atr(c, 'Sizing') || 'Normal').toLowerCase();
+    im.style.objectFit = sz === 'zoomimage' ? 'contain' : sz === 'stretchimage' ? 'fill' : sz === 'squeeze' ? 'scale-down' : 'none';
+    d.appendChild(im);
+  }
+  function rctl(c, cx, pfont, defB) {
+    if (!vis(c)) return null;
+    const t = cType(c), g = geom(c);
+    const font = atr(c, 'Font') ? repxFont(atr(c, 'Font')) : pfont;
+    const d = tag(el('div', 'rc'), c);
+    box(d, mm(g.x), mm(g.y), mm(g.w), mm(g.h));
+    fillCtl(d, c, t, cx, font, defB, g);
+    return d;
+  }
+  function fillCtl(d, c, t, cx, font, defB, g) {
+    if (t === 'XRLabel' || t === 'XRTableCell' || t === 'XRRichText' || t === 'XRCheckBox') {
+      decorate(d, c, font, defB || 'None');
+      let txt = t === 'XRRichText' ? (atr(c, 'Text') || '[Rich text]') : valueOf(c, cx);
+      if (t === 'XRCheckBox') txt = (/^(true|checked)$/i.test(atr(c, 'CheckState') || atr(c, 'Checked') || '') ? '☑ ' : '☐ ') + txt;
+      textBox(d, c, txt);
+    } else if (t === 'XRPageInfo') {
+      decorate(d, c, font, 'None');
+      const pi = atr(c, 'PageInfo') || 'Number', f = atr(c, 'TextFormatString');
+      let txt;
+      if (/datetime/i.test(pi)) txt = repxFormat(new Date(), f || '{0:dd/MM/yyyy HH:mm}', cx);
+      else txt = (f || (/total/i.test(pi) ? '{0} of {1}' : '{0}')).replace(/\{0\}/g, cx.page).replace(/\{1\}/g, cx.pages);
+      textBox(d, c, txt);
+    } else if (t === 'XRBarCode') {
+      decorate(d, c, font, 'None');
+      barcodeBox(d, c, valueOf(c, cx));
+    } else if (t === 'XRPictureBox') {
+      decorate(d, c, font, 'None');
+      pictureBox(d, c);
+    } else if (t === 'XRLine') {
+      const vert = /vertical/i.test(atr(c, 'LineDirection') || ''), lw = (num(atr(c, 'LineWidth')) || 1) * 25.4 / 96;
+      const ls = /dash/i.test(atr(c, 'LineStyle') || '') ? 'dashed' : /dot/i.test(atr(c, 'LineStyle') || '') ? 'dotted' : 'solid';
+      const ln = el('div', 'rl');
+      ln.style[vert ? 'borderLeft' : 'borderTop'] = cm(lw) + ' ' + ls + ' ' + (repxColor(atr(c, 'ForeColor')) || '#000');
+      ln.style[vert ? 'left' : 'top'] = '50%';
+      d.appendChild(ln);
+    } else if (t === 'XRPanel' || t === 'XRShape') {
+      decorate(d, c, font, t === 'XRShape' ? 'All' : 'None');
+      d.style.padding = '0';
+      subItems(c, 'Controls').forEach(k => { const n = rctl(k, cx, font, null); if (n) d.appendChild(n); });
+    } else if (t === 'XRTable') {
+      const rows = subItems(c, 'Rows').filter(vis);
+      const wsum = rows.reduce((s, r) => s + (num(atr(r, 'Weight')) || 1), 0) || 1;
+      const tb = atr(c, 'Borders') != null ? atr(c, 'Borders') : 'All';
+      let yy = 0;
+      rows.forEach(r => {
+        const rh = g.h * (num(atr(r, 'Weight')) || 1) / wsum, rfont = atr(r, 'Font') ? repxFont(atr(r, 'Font')) : font;
+        const cells = subItems(r, 'Cells').filter(vis);
+        const csum = cells.reduce((s, k) => s + (num(atr(k, 'Weight')) || 1), 0) || 1;
+        let xx = 0;
+        cells.forEach(k => {
+          const kw = g.w * (num(atr(k, 'Weight')) || 1) / csum;
+          const cell = tag(el('div', 'rc'), k);
+          box(cell, mm(xx), mm(yy), mm(kw), mm(rh));
+          fillCtl(cell, k, 'XRTableCell', cx, atr(k, 'Font') ? repxFont(atr(k, 'Font')) : rfont, tb);
+          d.appendChild(cell);
+          xx += kw;
+        });
+        yy += rh;
+      });
+      d.style.overflow = 'visible';
+    } else {
+      d.classList.add('ph');
+      d.appendChild(el('span', 'rt', (atr(c, 'Name') || t) + ' (' + t + ')'));
+      if (!unsupported.has(t)) { unsupported.add(t); warn('Control type ' + t + ' is not supported and is shown as an outline.'); }
+    }
+  }
+  const baseFont = repxFont(atr(root, 'Font'));
+  const out = [];
+  pages.forEach((pg, pi) => {
+    const P = el('div', 'rp');
+    P.style.width = cm(pageW); P.style.height = cm(pg.h);
+    const blocks = pg.blocks.slice();
+    if (pfH) blocks.push({ b: pfB, y: roll ? pg.endY : pageH0 - mB - pfH, h: pfH, cx: pcx });
+    blocks.forEach(bl => {
+      const B = tag(el('div', 'rb'), bl.b);
+      box(B, mL, bl.y, cw, bl.h);
+      const bfont = atr(bl.b, 'Font') ? repxFont(atr(bl.b, 'Font')) : baseFont;
+      const cx = Object.assign({}, bl.cx, { page: pi + 1, pages: pages.length });
+      subItems(bl.b, 'Controls').forEach(c => { const n = rctl(c, cx, bfont, null); if (n) B.appendChild(n); });
+      P.appendChild(B);
+    });
+    out.push(P);
+  });
+  return { pages: out, w: pageW, h: pageH0, unit: uname, count: pages.length };
+}
+
+
+const REPX_SAMPLE = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<XtraReportsLayoutSerializer SerializerVersion=\"23.1.3.0\" Ref=\"1\" ControlType=\"DevExpress.XtraReports.UI.XtraReport, DevExpress.XtraReports.v23.1, Version=23.1.3.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a\" Name=\"TaxInvoice\" PageWidth=\"827\" PageHeight=\"1169\" Version=\"23.1\" DataMember=\"Legs\" Font=\"Arial, 9.75pt\">\n  <Bands>\n    <Item1 Ref=\"2\" ControlType=\"TopMarginBand\" Name=\"TopMargin\" HeightF=\"50\" />\n    <Item2 Ref=\"3\" ControlType=\"ReportHeaderBand\" Name=\"ReportHeader\" HeightF=\"224\">\n      <Controls>\n        <Item1 Ref=\"4\" ControlType=\"XRLabel\" Name=\"lblShop\" TextAlignment=\"MiddleCenter\" SizeF=\"727,34\" LocationFloat=\"0, 0\" Text=\"K MARKET\" Font=\"Arial, 22pt, style=Bold\" />\n        <Item2 Ref=\"5\" ControlType=\"XRLabel\" Name=\"lblShop2\" TextAlignment=\"MiddleCenter\" SizeF=\"727,22\" LocationFloat=\"0, 34\" Text=\"RAYHAN AL MADINA SUPERMARKET\" Font=\"Arial, 12pt, style=Bold\" />\n        <Item3 Ref=\"6\" ControlType=\"XRLabel\" Name=\"lblAddr\" TextAlignment=\"MiddleCenter\" SizeF=\"727,20\" LocationFloat=\"0, 56\" Text=\"AL FATTAN TOWER, IND. AREA-1, JABEL ALI, DUBAI - UAE\" />\n        <Item4 Ref=\"7\" ControlType=\"XRLabel\" Name=\"lblMob\" TextAlignment=\"MiddleCenter\" SizeF=\"727,20\" LocationFloat=\"0, 76\">\n          <ExpressionBindings>\n            <Item1 Ref=\"8\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"'MOB: 058 576 1235     TRN: ' + [TaxLicenseNo]\" />\n          </ExpressionBindings>\n        </Item4>\n        <Item5 Ref=\"9\" ControlType=\"XRLabel\" Name=\"lblTitle\" TextAlignment=\"MiddleCenter\" SizeF=\"727,28\" LocationFloat=\"0, 100\" Text=\"TAX INVOICE\" Font=\"Arial, 16pt, style=Bold\" />\n        <Item6 Ref=\"10\" ControlType=\"XRLine\" Name=\"line1\" SizeF=\"727,2\" LocationFloat=\"0, 134\" />\n        <Item7 Ref=\"11\" ControlType=\"XRLabel\" Name=\"lblBill\" TextAlignment=\"MiddleLeft\" SizeF=\"363,20\" LocationFloat=\"0, 142\">\n          <ExpressionBindings>\n            <Item1 Ref=\"12\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"'Bill No: ' + [BillNo]\" />\n          </ExpressionBindings>\n        </Item7>\n        <Item8 Ref=\"13\" ControlType=\"XRLabel\" Name=\"lblDate\" TextAlignment=\"MiddleLeft\" SizeF=\"363,20\" LocationFloat=\"364, 142\" TextFormatString=\"Date: {0:dd-MMM-yyyy HH:mm}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"14\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[BillDate]\" />\n          </ExpressionBindings>\n        </Item8>\n        <Item9 Ref=\"15\" ControlType=\"XRLabel\" Name=\"lblPos\" TextAlignment=\"MiddleLeft\" SizeF=\"363,20\" LocationFloat=\"0, 164\">\n          <ExpressionBindings>\n            <Item1 Ref=\"16\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"'POS Name: ' + [PosName]\" />\n          </ExpressionBindings>\n        </Item9>\n        <Item10 Ref=\"17\" ControlType=\"XRLabel\" Name=\"lblUser\" TextAlignment=\"MiddleLeft\" SizeF=\"363,20\" LocationFloat=\"364, 164\">\n          <ExpressionBindings>\n            <Item1 Ref=\"18\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"'User ID: ' + [UserName]\" />\n          </ExpressionBindings>\n        </Item10>\n        <Item11 Ref=\"19\" ControlType=\"XRTable\" Name=\"tblHead\" SizeF=\"727,28\" LocationFloat=\"0, 192\">\n          <Rows>\n            <Item1 Ref=\"20\" ControlType=\"XRTableRow\" Name=\"tblHeadRow\" Weight=\"1\">\n              <Cells>\n                <Item1 Ref=\"21\" ControlType=\"XRTableCell\" Name=\"hSl\" Weight=\"0.6\" TextAlignment=\"MiddleLeft\" Text=\"Sl No\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item2 Ref=\"22\" ControlType=\"XRTableCell\" Name=\"hBar\" Weight=\"1.4\" TextAlignment=\"MiddleLeft\" Text=\"Barcode\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item3 Ref=\"23\" ControlType=\"XRTableCell\" Name=\"hDesc\" Weight=\"3.4\" TextAlignment=\"MiddleLeft\" Text=\"Description\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item4 Ref=\"24\" ControlType=\"XRTableCell\" Name=\"hQty\" Weight=\"0.8\" TextAlignment=\"MiddleRight\" Text=\"Qty\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item5 Ref=\"25\" ControlType=\"XRTableCell\" Name=\"hRate\" Weight=\"1\" TextAlignment=\"MiddleRight\" Text=\"Rate\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item6 Ref=\"26\" ControlType=\"XRTableCell\" Name=\"hTax\" Weight=\"0.8\" TextAlignment=\"MiddleRight\" Text=\"Tax %\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n                <Item7 Ref=\"27\" ControlType=\"XRTableCell\" Name=\"hAmt\" Weight=\"1.2\" TextAlignment=\"MiddleRight\" Text=\"Amount\" Font=\"Arial, 9.75pt, style=Bold\" BackColor=\"255,230,230,230\" />\n              </Cells>\n            </Item1>\n          </Rows>\n        </Item11>\n      </Controls>\n    </Item2>\n    <Item3 Ref=\"28\" ControlType=\"DetailBand\" Name=\"Detail\" HeightF=\"25\">\n      <Controls>\n        <Item1 Ref=\"29\" ControlType=\"XRTable\" Name=\"tblDetail\" SizeF=\"727,25\" LocationFloat=\"0, 0\">\n          <Rows>\n            <Item1 Ref=\"30\" ControlType=\"XRTableRow\" Name=\"tblDetailRow\" Weight=\"1\">\n              <Cells>\n                <Item1 Ref=\"31\" ControlType=\"XRTableCell\" Name=\"dSl\" Weight=\"0.6\" TextAlignment=\"MiddleLeft\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"32\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[DataSource.CurrentRowIndex] + 1\" />\n                  </ExpressionBindings>\n                </Item1>\n                <Item2 Ref=\"33\" ControlType=\"XRTableCell\" Name=\"dBar\" Weight=\"1.4\" TextAlignment=\"MiddleLeft\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"34\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Barcode]\" />\n                  </ExpressionBindings>\n                </Item2>\n                <Item3 Ref=\"35\" ControlType=\"XRTableCell\" Name=\"dDesc\" Weight=\"3.4\" TextAlignment=\"MiddleLeft\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"36\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Description]\" />\n                  </ExpressionBindings>\n                </Item3>\n                <Item4 Ref=\"37\" ControlType=\"XRTableCell\" Name=\"dQty\" Weight=\"0.8\" TextAlignment=\"MiddleRight\" TextFormatString=\"{0:0.00}\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"38\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Qty]\" />\n                  </ExpressionBindings>\n                </Item4>\n                <Item5 Ref=\"39\" ControlType=\"XRTableCell\" Name=\"dRate\" Weight=\"1\" TextAlignment=\"MiddleRight\" TextFormatString=\"{0:0.00}\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"40\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Rate]\" />\n                  </ExpressionBindings>\n                </Item5>\n                <Item6 Ref=\"41\" ControlType=\"XRTableCell\" Name=\"dTax\" Weight=\"0.8\" TextAlignment=\"MiddleRight\" TextFormatString=\"{0:0.00}\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"42\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[TaxPer]\" />\n                  </ExpressionBindings>\n                </Item6>\n                <Item7 Ref=\"43\" ControlType=\"XRTableCell\" Name=\"dAmt\" Weight=\"1.2\" TextAlignment=\"MiddleRight\" TextFormatString=\"{0:0.00}\" Borders=\"Bottom\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"44\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[NetTotal]\" />\n                  </ExpressionBindings>\n                </Item7>\n              </Cells>\n            </Item1>\n          </Rows>\n        </Item1>\n      </Controls>\n    </Item3>\n    <Item4 Ref=\"45\" ControlType=\"ReportFooterBand\" Name=\"ReportFooter\" HeightF=\"268\">\n      <Controls>\n        <Item1 Ref=\"46\" ControlType=\"XRLabel\" Name=\"lblF0\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 8\" Text=\"Total Qty :\" />\n        <Item2 Ref=\"47\" ControlType=\"XRLabel\" Name=\"valF0\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 8\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"48\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([Qty])\" />\n          </ExpressionBindings>\n        </Item2>\n        <Item3 Ref=\"49\" ControlType=\"XRLabel\" Name=\"lblF1\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 32\" Text=\"Total Amount :\" />\n        <Item4 Ref=\"50\" ControlType=\"XRLabel\" Name=\"valF1\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 32\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"51\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([Total])\" />\n          </ExpressionBindings>\n        </Item4>\n        <Item5 Ref=\"52\" ControlType=\"XRLabel\" Name=\"lblF2\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 56\" Text=\"Total Tax :\" />\n        <Item6 Ref=\"53\" ControlType=\"XRLabel\" Name=\"valF2\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 56\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"54\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([Tax])\" />\n          </ExpressionBindings>\n        </Item6>\n        <Item7 Ref=\"55\" ControlType=\"XRLabel\" Name=\"lblF3\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 80\" Text=\"Net Amount :\" Font=\"Arial, 9.75pt, style=Bold\" />\n        <Item8 Ref=\"56\" ControlType=\"XRLabel\" Name=\"valF3\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 80\" Font=\"Arial, 9.75pt, style=Bold\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"57\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([NetTotal])\" />\n          </ExpressionBindings>\n        </Item8>\n        <Item9 Ref=\"58\" ControlType=\"XRLabel\" Name=\"lblF4\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 104\" Text=\"Tendered Amount :\" />\n        <Item10 Ref=\"59\" ControlType=\"XRLabel\" Name=\"valF4\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 104\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"60\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[PaidAmount]\" />\n          </ExpressionBindings>\n        </Item10>\n        <Item11 Ref=\"61\" ControlType=\"XRLabel\" Name=\"lblF5\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"380, 128\" Text=\"Balance Amount :\" />\n        <Item12 Ref=\"62\" ControlType=\"XRLabel\" Name=\"valF5\" TextAlignment=\"MiddleRight\" SizeF=\"143,22\" LocationFloat=\"584, 128\" TextFormatString=\"{0:0.00}\">\n          <ExpressionBindings>\n            <Item1 Ref=\"63\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[BalAmount]\" />\n          </ExpressionBindings>\n        </Item12>\n        <Item13 Ref=\"64\" ControlType=\"XRBarCode\" Name=\"barBill\" AutoModule=\"true\" TextAlignment=\"BottomCenter\" SizeF=\"320,64\" LocationFloat=\"204, 166\">\n          <Symbology Ref=\"65\" Name=\"Code128\" />\n          <ExpressionBindings>\n            <Item1 Ref=\"66\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[TranInformBarcode]\" />\n          </ExpressionBindings>\n        </Item13>\n        <Item14 Ref=\"67\" ControlType=\"XRLabel\" Name=\"lblThanks\" TextAlignment=\"MiddleCenter\" SizeF=\"727,22\" LocationFloat=\"0, 238\" Text=\"Thank you for shopping and pls come again\" />\n      </Controls>\n    </Item4>\n    <Item5 Ref=\"68\" ControlType=\"PageFooterBand\" Name=\"PageFooter\" HeightF=\"30\">\n      <Controls>\n        <Item1 Ref=\"69\" ControlType=\"XRPageInfo\" Name=\"pgInfo\" PageInfo=\"NumberOfTotal\" TextFormatString=\"Page {0} of {1}\" TextAlignment=\"MiddleRight\" SizeF=\"200,22\" LocationFloat=\"527, 4\" />\n      </Controls>\n    </Item5>\n    <Item6 Ref=\"70\" ControlType=\"BottomMarginBand\" Name=\"BottomMargin\" HeightF=\"50\" />\n  </Bands>\n</XtraReportsLayoutSerializer>\n";
+const REPX_DATA = "{\n  \"BillNo\": \"4\",\n  \"BillDate\": \"2026-11-11T10:52:00\",\n  \"PosName\": \"POS1\",\n  \"UserName\": \"01\",\n  \"TaxLicenseNo\": \"105024829100003\",\n  \"TranInformBarcode\": \"0001000042026111101347\",\n  \"Legs\": [\n    {\n      \"Barcode\": \"6291002709143\",\n      \"Description\": \"G/O Bthr Zing ChcknStrips 470\",\n      \"TaxPer\": 5,\n      \"Qty\": 1,\n      \"Rate\": 34.5,\n      \"Total\": 32.86,\n      \"Tax\": 1.64,\n      \"NetTotal\": 34.5\n    },\n    {\n      \"Barcode\": \"6291003012345\",\n      \"Description\": \"Almarai Fresh Milk 1L\",\n      \"TaxPer\": 5,\n      \"Qty\": 3,\n      \"Rate\": 6.25,\n      \"Total\": 17.86,\n      \"Tax\": 0.89,\n      \"NetTotal\": 18.75\n    },\n    {\n      \"Barcode\": \"6291041500213\",\n      \"Description\": \"Al Ain Water 500ml x12\",\n      \"TaxPer\": 5,\n      \"Qty\": 2,\n      \"Rate\": 11.0,\n      \"Total\": 20.95,\n      \"Tax\": 1.05,\n      \"NetTotal\": 22.0\n    },\n    {\n      \"Barcode\": \"6281007012345\",\n      \"Description\": \"Lipton Yellow Label Tea 100s\",\n      \"TaxPer\": 5,\n      \"Qty\": 1,\n      \"Rate\": 24.75,\n      \"Total\": 23.57,\n      \"Tax\": 1.18,\n      \"NetTotal\": 24.75\n    }\n  ],\n  \"TotalQty\": 7,\n  \"ItemTotal\": 95.24,\n  \"TaxTotal\": 4.76,\n  \"BillAmount\": 100.0,\n  \"NetAmount\": 100.0,\n  \"PaidAmount\": 120,\n  \"BalAmount\": 20.0\n}";
+SAMPLES.repx = () => REPX_SAMPLE;
+
+const GRV_XML = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<XtraReportsLayoutSerializer SerializerVersion=\"20.2.6.0\" Ref=\"0\" ControlType=\"DevExpress.XtraReports.UI.XtraReport, DevExpress.XtraReports.v20.2, Version=20.2.6.0, Culture=neutral, PublicKeyToken=b88d1754d700e49a\" Name=\"Report2\" Margins=\"25, 25, 25, 29\" PaperKind=\"A4\" PageWidth=\"827\" PageHeight=\"1169\" Version=\"20.2\" Font=\"Arial, 9.75pt\">\n  <Parameters>\n    <Item1 Ref=\"2\" Visible=\"false\" Description=\"H_CompName\" Name=\"H_CompName\" />\n    <Item2 Ref=\"3\" Visible=\"false\" Description=\"H_CompAddress\" Name=\"H_CompAddress\" />\n    <Item3 Ref=\"4\" Visible=\"false\" Description=\"H_TranNo\" Name=\"H_TranNo\" />\n    <Item4 Ref=\"5\" Visible=\"false\" Description=\"H_Date\" Name=\"H_Date\" />\n    <Item5 Ref=\"6\" Visible=\"false\" Description=\"H_Cash_Credit\" Name=\"H_Cash_Credit\" />\n    <Item6 Ref=\"7\" Visible=\"false\" Description=\"H_InvoiceNo\" Name=\"H_InvoiceNo\" />\n    <Item7 Ref=\"8\" Visible=\"false\" Description=\"H_Supplier\" Name=\"H_Supplier\" />\n    <Item8 Ref=\"9\" Visible=\"false\" Description=\"H_PurchseAc\" Name=\"H_PurchseAc\" />\n    <Item9 Ref=\"10\" Visible=\"false\" Description=\"F_AddExpence\" Name=\"F_AddExpence\" />\n    <Item10 Ref=\"11\" Visible=\"false\" Description=\"F_Disc\" Name=\"F_Disc\" />\n    <Item11 Ref=\"12\" Visible=\"false\" Description=\"F_Net\" Name=\"F_Net\" />\n    <Item12 Ref=\"13\" Visible=\"false\" Description=\"F_Notes\" Name=\"F_Notes\" />\n    <Item13 Ref=\"14\" Visible=\"false\" Description=\"F_Gross\" Name=\"F_Gross\" />\n    <Item14 Ref=\"15\" Visible=\"false\" Description=\"TotalDisc\" Name=\"TotalDisc\" />\n    <Item15 Ref=\"16\" Visible=\"false\" Description=\"S_Address\" Name=\"S_Address\" />\n    <Item16 Ref=\"17\" Visible=\"false\" Description=\"S_Phone1\" Name=\"S_Phone1\" />\n    <Item17 Ref=\"18\" Visible=\"false\" Description=\"S_Phone2\" Name=\"S_Phone2\" />\n    <Item18 Ref=\"19\" Visible=\"false\" Description=\"CurrSymbolLC\" Name=\"CurrSymbolLC\" />\n    <Item19 Ref=\"20\" Visible=\"false\" Description=\"CurrSymbolFC\" Name=\"CurrSymbolFC\" />\n    <Item20 Ref=\"21\" Visible=\"false\" Description=\"Footer_Words\" Name=\"Footer_Words\" />\n    <Item21 Ref=\"22\" Visible=\"false\" Description=\"CurrLocation\" Name=\"CurrLocation\" />\n    <Item22 Ref=\"23\" Visible=\"false\" Description=\"TaxLC\" Name=\"TaxLC\" />\n    <Item23 Ref=\"24\" Visible=\"false\" Description=\"TaxFC\" Name=\"TaxFC\" />\n    <Item24 Ref=\"25\" Visible=\"false\" Description=\"TIN\" Name=\"TIN\" />\n    <Item25 Ref=\"26\" Visible=\"false\" Description=\"AccTIN\" Name=\"AccTIN\" />\n    <Item26 Ref=\"27\" Visible=\"false\" Description=\"GPPer\" Name=\"GPPer\" />\n    <Item27 Ref=\"28\" Visible=\"false\" Description=\"GPAmt\" Name=\"GPAmt\" />\n    <Item28 Ref=\"29\" Visible=\"false\" Description=\"ExciseTotal\" Name=\"ExciseTotal\" />\n    <Item29 Ref=\"30\" Visible=\"false\" Description=\"H_Logo\" Name=\"H_Logo\" />\n  </Parameters>\n  <CalculatedFields>\n    <Item1 Ref=\"31\" Name=\"colBalanceCalc\" DisplayName=\"BalanceCalc\" Expression=\"[BalanceAmount] - [TenderAmount]\" />\n  </CalculatedFields>\n  <Bands>\n    <Item1 Ref=\"32\" ControlType=\"TopMarginBand\" Name=\"TopMargin\" HeightF=\"25\" ForeColor=\"Black\" BackColor=\"Transparent\">\n      <StylePriority Ref=\"33\" UseForeColor=\"false\" UseBackColor=\"false\" />\n    </Item1>\n    <Item2 Ref=\"34\" ControlType=\"BottomMarginBand\" Name=\"BottomMargin\" HeightF=\"29\">\n      <Controls>\n        <Item1 Ref=\"35\" ControlType=\"XRPageInfo\" Name=\"pageInfo1\" PageInfo=\"DateTime\" SizeF=\"376.5,16\" LocationFloat=\"6,6\" StyleName=\"PageInfo\" />\n        <Item2 Ref=\"36\" ControlType=\"XRPageInfo\" Name=\"pageInfo2\" TextFormatString=\"Page {0} of {1}\" TextAlignment=\"TopRight\" SizeF=\"376.5,16\" LocationFloat=\"394,6\" StyleName=\"PageInfo\" />\n      </Controls>\n    </Item2>\n    <Item3 Ref=\"37\" ControlType=\"ReportHeaderBand\" Name=\"ReportHeader\" HeightF=\"297.5417\" ForeColor=\"Black\">\n      <Controls>\n        <Item1 Ref=\"38\" ControlType=\"XRLabel\" Name=\"label48\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,38.04161\" LocationFloat=\"59.6666641,257.416748\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"39\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item1>\n        <Item2 Ref=\"40\" ControlType=\"XRLabel\" Name=\"label47\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,32.33342\" LocationFloat=\"59.6666641,225.083328\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"41\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item2>\n        <Item3 Ref=\"42\" ControlType=\"XRLabel\" Name=\"label46\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,22.7501221\" LocationFloat=\"59.6666641,202.666672\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"43\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item3>\n        <Item4 Ref=\"44\" ControlType=\"XRLabel\" Name=\"label45\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,22.7501221\" LocationFloat=\"59.5833435,178.666672\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"45\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item4>\n        <Item5 Ref=\"46\" ControlType=\"XRLabel\" Name=\"label41\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,31.0000763\" LocationFloat=\"476.7083,178.416626\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"47\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item5>\n        <Item6 Ref=\"48\" ControlType=\"XRLabel\" Name=\"label42\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,24.0002441\" LocationFloat=\"476.7083,209.4167\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"49\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item6>\n        <Item7 Ref=\"50\" ControlType=\"XRLabel\" Name=\"label43\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,38.9998\" LocationFloat=\"476.7083,233.416946\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"51\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item7>\n        <Item8 Ref=\"52\" ControlType=\"XRLabel\" Name=\"label44\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"10.9909363,23.00003\" LocationFloat=\"476.7083,272.416748\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"53\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item8>\n        <Item9 Ref=\"54\" ControlType=\"XRLabel\" Name=\"label40\" Multiline=\"true\" SizeF=\"386,118.0417\" LocationFloat=\"391,177.416733\" Padding=\"2,2,0,0,100\" Borders=\"All\" />\n        <Item10 Ref=\"55\" ControlType=\"XRLabel\" Name=\"label39\" Multiline=\"true\" SizeF=\"392.2235,118.0417\" LocationFloat=\"0,177.416733\" Padding=\"2,2,0,0,100\" Borders=\"All\" />\n        <Item11 Ref=\"56\" ControlType=\"XRLabel\" Name=\"label38\" Multiline=\"true\" Text=\"  INVOICE DETAILS\" TextAlignment=\"TopCenter\" SizeF=\"382.652283,27.1666718\" LocationFloat=\"392,150.250061\" Font=\"Century Gothic, 12pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"57\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item11>\n        <Item12 Ref=\"58\" ControlType=\"XRLabel\" Name=\"label36\" Multiline=\"true\" Text=\"TRN \" TextAlignment=\"MiddleLeft\" SizeF=\"81.9979553,31.0000763\" LocationFloat=\"394,178.416626\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"59\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item12>\n        <Item13 Ref=\"60\" ControlType=\"XRLabel\" Name=\"label37\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"284.52356,31.000061\" LocationFloat=\"489.984131,178.416641\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"61\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_TranNo]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"62\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item13>\n        <Item14 Ref=\"63\" ControlType=\"XRLabel\" Name=\"label35\" Multiline=\"true\" Text=\"  PARTY DETAILS\" TextAlignment=\"TopCenter\" SizeF=\"391.2235,27.1666718\" LocationFloat=\"0.999999046,150.250061\" Font=\"Century Gothic, 12pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"64\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item14>\n        <Item15 Ref=\"65\" ControlType=\"XRLabel\" Name=\"label27\" Multiline=\"true\" TextAlignment=\"TopLeft\" SizeF=\"316.8947,32.33342\" LocationFloat=\"70.77588,225.083389\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"66\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[S_Phone1]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"67\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item15>\n        <Item16 Ref=\"68\" ControlType=\"XRLabel\" Name=\"label28\" Multiline=\"true\" Text=\"Phone \" TextAlignment=\"MiddleLeft\" SizeF=\"58.58334,32.33342\" LocationFloat=\"1,225.083328\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"69\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item16>\n        <Item17 Ref=\"70\" ControlType=\"XRPictureBox\" Name=\"pictureBox1\" ImageUrl=\"C:\\Users\\brino\\Desktop\\logo.jpg\" Sizing=\"StretchImage\" SizeF=\"164.333145,115.916351\" LocationFloat=\"1.58945713E-05,0\" />\n        <Item18 Ref=\"71\" ControlType=\"XRLabel\" Name=\"label31\" Text=\"PURCAHSE INVOICE\" TextAlignment=\"TopCenter\" SizeF=\"777,32.50029\" LocationFloat=\"0,115.916351\" StyleName=\"Title\" Font=\"Century Gothic, 18pt, style=Bold, Underline\" ForeColor=\"Honeydew\" BackColor=\"RoyalBlue\" BorderColor=\"LightGray\" Borders=\"Bottom\">\n          <StylePriority Ref=\"72\" UseFont=\"false\" UseForeColor=\"false\" UseBackColor=\"false\" UseBorderColor=\"false\" UseBorders=\"false\" UseTextAlignment=\"false\" />\n        </Item18>\n        <Item19 Ref=\"73\" ControlType=\"XRLabel\" Name=\"label29\" Multiline=\"true\" Text=\"Address \" TextAlignment=\"MiddleLeft\" SizeF=\"59.6666641,38.04161\" LocationFloat=\"0,257.416748\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"74\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item19>\n        <Item20 Ref=\"75\" ControlType=\"XRLabel\" Name=\"label30\" Multiline=\"true\" TextAlignment=\"TopLeft\" SizeF=\"316.8947,38.041626\" LocationFloat=\"70.77588,257.4168\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"76\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[S_Address]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"77\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item20>\n        <Item21 Ref=\"78\" ControlType=\"XRLabel\" Name=\"label25\" Multiline=\"true\" Text=\"Supplier \" TextAlignment=\"MiddleLeft\" SizeF=\"59.5833435,23.0000229\" LocationFloat=\"0,178.416718\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"79\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item21>\n        <Item22 Ref=\"80\" ControlType=\"XRLabel\" Name=\"label26\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"316.9363,23.0000153\" LocationFloat=\"70.77588,178.416641\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"81\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_Supplier]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"82\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item22>\n        <Item23 Ref=\"83\" ControlType=\"XRLabel\" Name=\"label23\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"284.3875,38.04158\" LocationFloat=\"490.120178,233.416931\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"84\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_InvoiceNo]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"85\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item23>\n        <Item24 Ref=\"86\" ControlType=\"XRLabel\" Name=\"label24\" Multiline=\"true\" Text=\"Invoice No \" TextAlignment=\"MiddleLeft\" SizeF=\"81.9979553,38.9998\" LocationFloat=\"394,233.416946\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"87\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item24>\n        <Item25 Ref=\"88\" ControlType=\"XRLabel\" Name=\"label18\" Multiline=\"true\" Text=\"Tran Date \" TextAlignment=\"MiddleLeft\" SizeF=\"81.9979553,23.00003\" LocationFloat=\"394,272.416748\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"89\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item25>\n        <Item26 Ref=\"90\" ControlType=\"XRLabel\" Name=\"label21\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"284.3875,23.0000153\" LocationFloat=\"490.120178,272.416748\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"91\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_Date]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"92\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item26>\n        <Item27 Ref=\"93\" ControlType=\"XRLabel\" Name=\"label14\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"284.3875,23.0000153\" LocationFloat=\"490.120178,209.416718\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"94\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_TranNo]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"95\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item27>\n        <Item28 Ref=\"96\" ControlType=\"XRLabel\" Name=\"label17\" Multiline=\"true\" Text=\"Tran No \" TextAlignment=\"MiddleLeft\" SizeF=\"81.9979553,24.0002441\" LocationFloat=\"394,209.4167\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"97\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item28>\n        <Item29 Ref=\"98\" ControlType=\"XRLabel\" Name=\"label1\" TextAlignment=\"MiddleCenter\" SizeF=\"610.3191,34.1943436\" LocationFloat=\"164.333115,0\" StyleName=\"Title\" Font=\"Century Gothic, 14pt, style=Bold\">\n          <ExpressionBindings>\n            <Item1 Ref=\"99\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_CompName]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"100\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item29>\n        <Item30 Ref=\"101\" ControlType=\"XRLabel\" Name=\"label9\" TextAlignment=\"MiddleCenter\" SizeF=\"610.3191,24.1943359\" LocationFloat=\"164.33316,91.7220154\" StyleName=\"Title\" Font=\"Century Gothic, 10pt, style=Bold\" BorderColor=\"LightGray\" Borders=\"Bottom\">\n          <ExpressionBindings>\n            <Item1 Ref=\"102\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"'TRN :' + [Parameters].[TIN]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"103\" UseFont=\"false\" UseBorderColor=\"false\" UseBorders=\"false\" UseTextAlignment=\"false\" />\n        </Item30>\n        <Item31 Ref=\"104\" ControlType=\"XRLabel\" Name=\"label16\" Multiline=\"true\" TextAlignment=\"MiddleCenter\" SizeF=\"610.319,57.52767\" LocationFloat=\"164.33316,34.1943436\" StyleName=\"Title\" Font=\"Century Gothic, 10pt\">\n          <ExpressionBindings>\n            <Item1 Ref=\"105\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[H_CompAddress]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"106\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item31>\n        <Item32 Ref=\"107\" ControlType=\"XRLabel\" Name=\"label33\" Multiline=\"true\" Text=\"TRN \" TextAlignment=\"MiddleLeft\" SizeF=\"59.5833244,23.0000153\" LocationFloat=\"1.58945713E-05,201.416779\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"108\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item32>\n        <Item33 Ref=\"109\" ControlType=\"XRLabel\" Name=\"label34\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"316.8947,23\" LocationFloat=\"70.77588,201.416733\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"110\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[AccTIN]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"111\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item33>\n      </Controls>\n      <StylePriority Ref=\"112\" UseForeColor=\"false\" />\n    </Item3>\n    <Item4 Ref=\"113\" ControlType=\"GroupHeaderBand\" Name=\"GroupHeader1\" GroupUnion=\"WithFirstDetail\" Level=\"1\" Expanded=\"false\" HeightF=\"27\">\n      <GroupFields>\n        <Item1 Ref=\"114\" FieldName=\"Company\" />\n      </GroupFields>\n    </Item4>\n    <Item5 Ref=\"115\" ControlType=\"GroupHeaderBand\" Name=\"GroupHeader2\" GroupUnion=\"WithFirstDetail\" Level=\"2\" HeightF=\"25\" BackColor=\"LightSteelBlue\" BorderColor=\"Silver\">\n      <Controls>\n        <Item1 Ref=\"116\" ControlType=\"XRTable\" Name=\"table2\" TextAlignment=\"MiddleLeft\" SizeF=\"777,25\" LocationFloat=\"0,0\" Font=\"Century Gothic, 9pt, style=Bold\" BorderColor=\"Silver\" Borders=\"All\">\n          <Rows>\n            <Item1 Ref=\"117\" ControlType=\"XRTableRow\" Name=\"tableRow2\" Weight=\"11.5\">\n              <Cells>\n                <Item1 Ref=\"118\" ControlType=\"XRTableCell\" Name=\"tableCell21\" Weight=\"0.086083046665470536\" Multiline=\"true\" Text=\"SlNo\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"119\" UseBorderColor=\"false\" />\n                </Item1>\n                <Item2 Ref=\"120\" ControlType=\"XRTableCell\" Name=\"tableCell17\" Weight=\"0.19599024569118517\" Multiline=\"true\" Text=\"ItemCode\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"121\" UseBorderColor=\"false\" />\n                </Item2>\n                <Item3 Ref=\"122\" ControlType=\"XRTableCell\" Name=\"tableCell18\" Weight=\"0.414837496047069\" Multiline=\"true\" Text=\"ItemName\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"123\" UseBorderColor=\"false\" />\n                </Item3>\n                <Item4 Ref=\"124\" ControlType=\"XRTableCell\" Name=\"tableCell14\" Weight=\"0.075289897864646\" Multiline=\"true\" Text=\"CF\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"125\" UseBorderColor=\"false\" />\n                </Item4>\n                <Item5 Ref=\"126\" ControlType=\"XRTableCell\" Name=\"tableCell26\" Weight=\"0.076193197154036607\" Multiline=\"true\" Text=\"Unit\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"127\" UseBorderColor=\"false\" />\n                </Item5>\n                <Item6 Ref=\"128\" ControlType=\"XRTableCell\" Name=\"tableCell19\" Weight=\"0.09203213607830979\" Multiline=\"true\" Text=\"Qty\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"129\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item6>\n                <Item7 Ref=\"130\" ControlType=\"XRTableCell\" Name=\"tableCell16\" Weight=\"0.089175049275377866\" Multiline=\"true\" Text=\"FOC\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"131\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item7>\n                <Item8 Ref=\"132\" ControlType=\"XRTableCell\" Name=\"tableCell20\" Weight=\"0.1062702977943174\" Multiline=\"true\" Text=\"Rate\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"133\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item8>\n                <Item9 Ref=\"134\" ControlType=\"XRTableCell\" Name=\"tableCell15\" Weight=\"0.10840912493804616\" Multiline=\"true\" Text=\"Disc\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"135\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item9>\n                <Item10 Ref=\"136\" ControlType=\"XRTableCell\" Name=\"tableCell24\" Weight=\"0.14674793662575081\" Multiline=\"true\" Text=\"Total\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"137\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item10>\n                <Item11 Ref=\"138\" ControlType=\"XRTableCell\" Name=\"tableCell22\" Weight=\"0.14691839251864192\" Multiline=\"true\" Text=\"Tax\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"139\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item11>\n                <Item12 Ref=\"140\" ControlType=\"XRTableCell\" Name=\"tableCell25\" Weight=\"0.14273258928666294\" Multiline=\"true\" Text=\"Net\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\" BorderColor=\"DimGray\">\n                  <StylePriority Ref=\"141\" UseBorderColor=\"false\" UseTextAlignment=\"false\" />\n                </Item12>\n              </Cells>\n            </Item1>\n          </Rows>\n          <StylePriority Ref=\"142\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item1>\n      </Controls>\n      <StylePriority Ref=\"143\" UseBackColor=\"false\" />\n    </Item5>\n    <Item6 Ref=\"144\" ControlType=\"DetailBand\" Name=\"Detail\" HeightF=\"25\" BorderColor=\"Silver\" Borders=\"All\">\n      <Controls>\n        <Item1 Ref=\"145\" ControlType=\"XRTable\" Name=\"table1\" TextAlignment=\"MiddleLeft\" SizeF=\"777,25\" LocationFloat=\"0,0\" Font=\"Century Gothic, 7pt\">\n          <Rows>\n            <Item1 Ref=\"146\" ControlType=\"XRTableRow\" Name=\"tableRow1\" Weight=\"11.5\">\n              <Cells>\n                <Item1 Ref=\"147\" ControlType=\"XRTableCell\" Name=\"tableCell8\" Weight=\"0.086083046665470536\" Multiline=\"true\" Text=\"tableCell8\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"148\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[SlNo]\" />\n                  </ExpressionBindings>\n                </Item1>\n                <Item2 Ref=\"149\" ControlType=\"XRTableCell\" Name=\"tableCell4\" Weight=\"0.19599024569118517\" Multiline=\"true\" Text=\"tableCell4\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"150\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[ItemCode]\" />\n                  </ExpressionBindings>\n                </Item2>\n                <Item3 Ref=\"151\" ControlType=\"XRTableCell\" Name=\"tableCell5\" Weight=\"0.41483752068944896\" Multiline=\"true\" Text=\"tableCell5\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"152\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[ItemName]\" />\n                  </ExpressionBindings>\n                </Item3>\n                <Item4 Ref=\"153\" ControlType=\"XRTableCell\" Name=\"tableCell1\" Weight=\"0.0752899060787725\" Multiline=\"true\" Text=\"tableCell1\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"154\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[CF]\" />\n                  </ExpressionBindings>\n                </Item4>\n                <Item5 Ref=\"155\" ControlType=\"XRTableCell\" Name=\"tableCell13\" Weight=\"0.076193197154036607\" Multiline=\"true\" Text=\"tableCell13\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"156\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Unit]\" />\n                  </ExpressionBindings>\n                </Item5>\n                <Item6 Ref=\"157\" ControlType=\"XRTableCell\" Name=\"tableCell6\" Weight=\"0.092032136078309762\" Multiline=\"true\" Text=\"tableCell6\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"158\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Qty]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"159\" UseTextAlignment=\"false\" />\n                </Item6>\n                <Item7 Ref=\"160\" ControlType=\"XRTableCell\" Name=\"tableCell3\" Weight=\"0.089175049275377838\" Multiline=\"true\" Text=\"tableCell3\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"161\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[FOC]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"162\" UseTextAlignment=\"false\" />\n                </Item7>\n                <Item8 Ref=\"163\" ControlType=\"XRTableCell\" Name=\"tableCell7\" Weight=\"0.10627028958019072\" Multiline=\"true\" Text=\"tableCell7\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"164\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Rate]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"165\" UseTextAlignment=\"false\" />\n                </Item8>\n                <Item9 Ref=\"166\" ControlType=\"XRTableCell\" Name=\"tableCell2\" Weight=\"0.10840911672391955\" Multiline=\"true\" Text=\"tableCell2\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"167\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Disc]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"168\" UseTextAlignment=\"false\" />\n                </Item9>\n                <Item10 Ref=\"169\" ControlType=\"XRTableCell\" Name=\"tableCell11\" Weight=\"0.14674792841162421\" Multiline=\"true\" Text=\"tableCell11\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"170\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Total]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"171\" UseTextAlignment=\"false\" />\n                </Item10>\n                <Item11 Ref=\"172\" ControlType=\"XRTableCell\" Name=\"tableCell9\" Weight=\"0.14691839877388507\" Multiline=\"true\" Text=\"tableCell9\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"173\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Tax]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"174\" UseTextAlignment=\"false\" />\n                </Item11>\n                <Item12 Ref=\"175\" ControlType=\"XRTableCell\" Name=\"tableCell12\" Weight=\"0.13765436989208746\" Multiline=\"true\" Text=\"tableCell12\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,96\">\n                  <ExpressionBindings>\n                    <Item1 Ref=\"176\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[TotalAfterTax]\" />\n                  </ExpressionBindings>\n                  <StylePriority Ref=\"177\" UseTextAlignment=\"false\" />\n                </Item12>\n                <Item13 Ref=\"178\" ControlType=\"XRTableCell\" Name=\"tableCell23\" Weight=\"0.0050783777367226432\" Multiline=\"true\" TextAlignment=\"MiddleRight\" Padding=\"2,2,0,0,100\">\n                  <StylePriority Ref=\"179\" UsePadding=\"false\" UseTextAlignment=\"false\" />\n                </Item13>\n              </Cells>\n            </Item1>\n          </Rows>\n          <StylePriority Ref=\"180\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item1>\n      </Controls>\n    </Item6>\n    <Item7 Ref=\"181\" ControlType=\"GroupFooterBand\" Name=\"GroupFooter1\" GroupUnion=\"WithLastDetail\" HeightF=\"0\" />\n    <Item8 Ref=\"182\" ControlType=\"GroupFooterBand\" Name=\"GroupFooter2\" Level=\"1\" Expanded=\"false\" HeightF=\"21.16884\" Visible=\"false\">\n      <Controls>\n        <Item1 Ref=\"183\" ControlType=\"XRPanel\" Name=\"panel1\" SizeF=\"777,21.16884\" LocationFloat=\"0,0\" StyleName=\"TotalBackground1\">\n          <Controls>\n            <Item1 Ref=\"184\" ControlType=\"XRLabel\" Name=\"label3\" Text=\"SUM\" SizeF=\"53,14.8844385\" LocationFloat=\"225.501129,3.400008\" StyleName=\"TotalCaption1\" ForeColor=\"Gray\" Visible=\"false\">\n              <StylePriority Ref=\"185\" UseForeColor=\"false\" />\n            </Item1>\n            <Item2 Ref=\"186\" ControlType=\"XRLabel\" Name=\"label4\" TextFormatString=\"{0:N2}\" CanGrow=\"false\" TextAlignment=\"MiddleRight\" WordWrap=\"false\" SizeF=\"89.11142,18.7688313\" LocationFloat=\"488.740936,2.40001678\" StyleName=\"TotalData1\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,64,64\">\n              <Summary Ref=\"187\" Running=\"Group\" />\n              <ExpressionBindings>\n                <Item1 Ref=\"188\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([BalanceAmount])\" />\n              </ExpressionBindings>\n              <StylePriority Ref=\"189\" UseFont=\"false\" UseForeColor=\"false\" UseTextAlignment=\"false\" />\n            </Item2>\n            <Item3 Ref=\"190\" ControlType=\"XRLabel\" Name=\"label5\" Text=\"SUM\" SizeF=\"36.25,14.8844366\" LocationFloat=\"186.018188,3.400008\" StyleName=\"TotalCaption1\" ForeColor=\"Gray\" Visible=\"false\">\n              <StylePriority Ref=\"191\" UseForeColor=\"false\" />\n            </Item3>\n            <Item4 Ref=\"192\" ControlType=\"XRLabel\" Name=\"label6\" TextFormatString=\"{0:N2}\" CanGrow=\"false\" TextAlignment=\"MiddleRight\" WordWrap=\"false\" SizeF=\"93.77777,19.4355335\" LocationFloat=\"677.222351,2.40001678\" StyleName=\"TotalData1\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,64,64\">\n              <Summary Ref=\"193\" Running=\"Group\" />\n              <ExpressionBindings>\n                <Item1 Ref=\"194\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([colBalanceCalc])\" />\n              </ExpressionBindings>\n              <StylePriority Ref=\"195\" UseFont=\"false\" UseForeColor=\"false\" UseTextAlignment=\"false\" />\n            </Item4>\n            <Item5 Ref=\"196\" ControlType=\"XRLabel\" Name=\"label7\" Text=\"SUM\" SizeF=\"51.5,14.8844385\" LocationFloat=\"134.5182,3.400008\" StyleName=\"TotalCaption1\" ForeColor=\"Gray\" Visible=\"false\">\n              <StylePriority Ref=\"197\" UseForeColor=\"false\" />\n            </Item5>\n            <Item6 Ref=\"198\" ControlType=\"XRLabel\" Name=\"label8\" TextFormatString=\"{0:N2}\" CanGrow=\"false\" TextAlignment=\"MiddleRight\" WordWrap=\"false\" SizeF=\"99.36981,19.4355335\" LocationFloat=\"577.8525,2.40001678\" StyleName=\"TotalData1\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,64,64\">\n              <Summary Ref=\"199\" Running=\"Group\" />\n              <ExpressionBindings>\n                <Item1 Ref=\"200\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"sumSum([TenderAmount])\" />\n              </ExpressionBindings>\n              <StylePriority Ref=\"201\" UseFont=\"false\" UseForeColor=\"false\" UseTextAlignment=\"false\" />\n            </Item6>\n          </Controls>\n        </Item1>\n      </Controls>\n    </Item8>\n    <Item9 Ref=\"202\" ControlType=\"ReportFooterBand\" Name=\"ReportFooter\" PrintAtBottom=\"true\" HeightF=\"143.541656\">\n      <Controls>\n        <Item1 Ref=\"203\" ControlType=\"XRLabel\" Name=\"label51\" Multiline=\"true\" Text=\":\" TextAlignment=\"MiddleLeft\" SizeF=\"11.4894943,23.0000153\" LocationFloat=\"85.9166641,56.16665\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"204\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item1>\n        <Item2 Ref=\"205\" ControlType=\"XRLabel\" Name=\"label50\" Multiline=\"true\" Text=\"Add. Expence\" TextAlignment=\"MiddleLeft\" SizeF=\"82.53114,23.0000153\" LocationFloat=\"3.249995,56.16665\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\">\n          <StylePriority Ref=\"206\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item2>\n        <Item3 Ref=\"207\" ControlType=\"XRLabel\" Name=\"label49\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"419.670319,23.0000153\" LocationFloat=\"97.40616,56.16665\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\">\n          <ExpressionBindings>\n            <Item1 Ref=\"208\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[F_AddExpence]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"209\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item3>\n        <Item4 Ref=\"210\" ControlType=\"XRLabel\" Name=\"label32\" TextAlignment=\"TopCenter\" SizeF=\"766.041748,7.527667\" LocationFloat=\"4.958439,3.72235\" StyleName=\"Title\" Font=\"Century Gothic, 12pt, style=Bold\" BorderColor=\"LightGray\" Borders=\"Top\">\n          <StylePriority Ref=\"211\" UseFont=\"false\" UseBorderColor=\"false\" UseBorders=\"false\" UseTextAlignment=\"false\" />\n        </Item4>\n        <Item5 Ref=\"212\" ControlType=\"XRLabel\" Name=\"label13\" Multiline=\"true\" TextAlignment=\"MiddleLeft\" SizeF=\"513.8265,23.0000114\" LocationFloat=\"3.249995,86.50004\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\">\n          <ExpressionBindings>\n            <Item1 Ref=\"213\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[Footer_Words]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"214\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item5>\n        <Item6 Ref=\"215\" ControlType=\"XRLabel\" Name=\"label2\" Multiline=\"true\" TextAlignment=\"MiddleRight\" SizeF=\"149.107483,23.0000114\" LocationFloat=\"621.3923,63.5000229\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"216\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[TaxLC]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"217\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item6>\n        <Item7 Ref=\"218\" ControlType=\"XRLabel\" Name=\"label11\" Multiline=\"true\" Text=\"Tax :\" TextAlignment=\"MiddleRight\" SizeF=\"104.315796,23.0000076\" LocationFloat=\"517.076355,63.5000877\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"219\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item7>\n        <Item8 Ref=\"220\" ControlType=\"XRLabel\" Name=\"label19\" Multiline=\"true\" Text=\"Sub Total :\" TextAlignment=\"MiddleRight\" SizeF=\"104.315857,23.0000114\" LocationFloat=\"517.0765,17.5000515\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"221\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item8>\n        <Item9 Ref=\"222\" ControlType=\"XRLabel\" Name=\"label20\" Multiline=\"true\" Text=\"Disc :\" TextAlignment=\"MiddleRight\" SizeF=\"104.315857,23.0000153\" LocationFloat=\"517.0765,40.5000038\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"223\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item9>\n        <Item10 Ref=\"224\" ControlType=\"XRLabel\" Name=\"label22\" Multiline=\"true\" Text=\"Net Total :\" TextAlignment=\"MiddleRight\" SizeF=\"104.315857,23.0000076\" LocationFloat=\"517.0765,86.50004\" Font=\"Century Gothic, 10pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <StylePriority Ref=\"225\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item10>\n        <Item11 Ref=\"226\" ControlType=\"XRLabel\" Name=\"label15\" Multiline=\"true\" TextAlignment=\"MiddleRight\" SizeF=\"149.107483,23.0000076\" LocationFloat=\"621.392334,86.50004\" Font=\"Century Gothic, 10pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"227\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[F_Net]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"228\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item11>\n        <Item12 Ref=\"229\" ControlType=\"XRLabel\" Name=\"label12\" Multiline=\"true\" TextAlignment=\"MiddleRight\" SizeF=\"149.107483,23.0000114\" LocationFloat=\"621.392334,40.5000038\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"230\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[F_Disc]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"231\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item12>\n        <Item13 Ref=\"232\" ControlType=\"XRLabel\" Name=\"label10\" Multiline=\"true\" TextAlignment=\"MiddleRight\" SizeF=\"149.107483,23.0000057\" LocationFloat=\"621.392334,17.5000515\" Font=\"Century Gothic, 8pt, style=Bold\" Padding=\"2,2,0,0,100\" BorderColor=\"Silver\" Borders=\"All\">\n          <ExpressionBindings>\n            <Item1 Ref=\"233\" EventName=\"BeforePrint\" PropertyName=\"Text\" Expression=\"[Parameters].[F_Gross]\" />\n          </ExpressionBindings>\n          <StylePriority Ref=\"234\" UseFont=\"false\" UseTextAlignment=\"false\" />\n        </Item13>\n      </Controls>\n    </Item9>\n  </Bands>\n  <StyleSheet>\n    <Item1 Ref=\"235\" Name=\"Title\" BorderStyle=\"Inset\" Font=\"Arial, 14.25pt\" ForeColor=\"255,64,70,80\" BackColor=\"Transparent\" BorderColor=\"Black\" Sides=\"None\" StringFormat=\"Near;Near;0;None;Character;Default\" BorderWidthSerializable=\"1\" />\n    <Item2 Ref=\"236\" Name=\"GroupCaption1\" BorderStyle=\"Inset\" Padding=\"6,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,228,228,228\" BackColor=\"100,153,212,246\" BorderColor=\"White\" Sides=\"Bottom\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"2\" />\n    <Item3 Ref=\"237\" Name=\"GroupData1\" BorderStyle=\"Inset\" Padding=\"6,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,70,80\" BackColor=\"100,153,212,246\" BorderColor=\"White\" Sides=\"Bottom\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"2\" />\n    <Item4 Ref=\"238\" Name=\"DetailCaption1\" BorderStyle=\"Inset\" Padding=\"6,6,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,70,80\" BackColor=\"100,153,212,246\" BorderColor=\"White\" Sides=\"Left\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"2\" />\n    <Item5 Ref=\"239\" Name=\"DetailData1\" BorderStyle=\"Inset\" Padding=\"6,6,0,0,100\" Font=\"Arial, 8.25pt\" ForeColor=\"Black\" BorderColor=\"Transparent\" Sides=\"Left\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"2\" />\n    <Item6 Ref=\"240\" Name=\"GroupFooterBackground3\" BorderStyle=\"Inset\" Padding=\"6,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,228,228,228\" BackColor=\"255,109,117,129\" BorderColor=\"White\" Sides=\"Bottom\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"2\" />\n    <Item7 Ref=\"241\" Name=\"DetailData3_Odd\" BorderStyle=\"Inset\" Padding=\"6,6,0,0,100\" Font=\"Arial, 8.25pt\" ForeColor=\"Black\" BackColor=\"255,243,245,248\" BorderColor=\"Transparent\" Sides=\"None\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" BorderWidthSerializable=\"1\" />\n    <Item8 Ref=\"242\" Name=\"TotalCaption1\" BorderStyle=\"Inset\" Padding=\"6,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,182,186,192\" Sides=\"None\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" />\n    <Item9 Ref=\"243\" Name=\"TotalData1\" BorderStyle=\"Inset\" Padding=\"2,6,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,75,75,75\" Sides=\"None\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" />\n    <Item10 Ref=\"244\" Name=\"TotalBackground1\" BorderStyle=\"Inset\" BackColor=\"255,243,245,248\" BorderColor=\"White\" Sides=\"Bottom\" StringFormat=\"Near;Near;0;None;Character;Default\" BorderWidthSerializable=\"2\" />\n    <Item11 Ref=\"245\" Name=\"GrandTotalCaption1\" BorderStyle=\"Inset\" Padding=\"6,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,147,147,147\" Sides=\"None\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" />\n    <Item12 Ref=\"246\" Name=\"GrandTotalData1\" BorderStyle=\"Inset\" Padding=\"2,6,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,75,75,75\" Sides=\"None\" StringFormat=\"Near;Center;0;None;Character;Default\" TextAlignment=\"MiddleLeft\" />\n    <Item13 Ref=\"247\" Name=\"GrandTotalBackground1\" BorderStyle=\"Inset\" BackColor=\"White\" BorderColor=\"255,75,75,75\" Sides=\"Bottom\" StringFormat=\"Near;Near;0;None;Character;Default\" BorderWidthSerializable=\"2\" />\n    <Item14 Ref=\"248\" Name=\"PageInfo\" BorderStyle=\"Inset\" Padding=\"2,2,0,0,100\" Font=\"Arial, 8.25pt, style=Bold\" ForeColor=\"255,64,70,80\" StringFormat=\"Near;Near;0;None;Character;Default\" />\n    <Item15 Ref=\"249\" Name=\"controlStyle1\" BorderStyle=\"Inset\" Padding=\"0,0,0,0,100\" StringFormat=\"Near;Near;0;None;Character;Default\" />\n  </StyleSheet>\n  <ComponentStorage>\n    <Item1 Ref=\"250\" ObjectType=\"DevExpress.DataAccess.ObjectBinding.ObjectDataSource,DevExpress.DataAccess.v20.2\" Name=\"objectDataSource1\" Base64=\"PE9iamVjdERhdGFTb3VyY2UgTmFtZT0ib2JqZWN0RGF0YVNvdXJjZTEiPjxEYXRhU291cmNlIFR5cGU9IkRhdGFPYmplY3RzTGF5ZXIuUHJpbnRPYmplY3RzLlByaW50RmllbGRzX0dSViwgRGF0YU9iamVjdHNMYXllciwgVmVyc2lvbj0xLjAuMC4wLCBDdWx0dXJlPW5ldXRyYWwsIFB1YmxpY0tleVRva2VuPW51bGwiIC8+PC9PYmplY3REYXRhU291cmNlPg==\" />\n  </ComponentStorage>\n</XtraReportsLayoutSerializer>";
+const GRV_DATA = "{\n  \"H_CompName\": \"K MARKET LLC\",\n  \"H_CompAddress\": \"Shop No. 12, Al Nahda Street\\nP.O. Box 12345, Sharjah, U.A.E\\nTel: 06 555 1234\",\n  \"H_TranNo\": \"GRV-000123\",\n  \"H_Date\": \"13-Nov-2026\",\n  \"H_Cash_Credit\": \"Credit\",\n  \"H_InvoiceNo\": \"INV-77841\",\n  \"H_Supplier\": \"Al Safa Trading Co. LLC\",\n  \"H_PurchseAc\": \"Purchase A/c\",\n  \"F_AddExpence\": \"0.00\",\n  \"F_Disc\": \"12.50\",\n  \"F_Net\": \"1,262.25\",\n  \"F_Notes\": \"Received in good condition\",\n  \"F_Gross\": \"1,250.00\",\n  \"TotalDisc\": \"12.50\",\n  \"S_Address\": \"Warehouse 4, Industrial Area 3, Sharjah, U.A.E\",\n  \"S_Phone1\": \"+971 6 534 8899\",\n  \"S_Phone2\": \"+971 50 123 4567\",\n  \"CurrSymbolLC\": \"AED\",\n  \"CurrSymbolFC\": \"AED\",\n  \"Footer_Words\": \"UAE Dirhams One Thousand Two Hundred Sixty Two and Twenty Five Fils Only\",\n  \"CurrLocation\": \"Sharjah\",\n  \"TaxLC\": \"62.75\",\n  \"TaxFC\": \"62.75\",\n  \"TIN\": \"100234567800003\",\n  \"AccTIN\": \"100987654300003\",\n  \"GPPer\": \"0\",\n  \"GPAmt\": \"0\",\n  \"ExciseTotal\": \"0\",\n  \"H_Logo\": \"\",\n  \"Rows\": [\n    {\n      \"SlNo\": 1,\n      \"ItemCode\": \"1001\",\n      \"ItemName\": \"Basmati Rice 5kg\",\n      \"CF\": \"1\",\n      \"Unit\": \"Bag\",\n      \"Qty\": 10,\n      \"FOC\": 0,\n      \"Rate\": 32.5,\n      \"Disc\": 0,\n      \"Total\": \"325.00\",\n      \"Tax\": \"16.25\",\n      \"TotalAfterTax\": \"341.25\",\n      \"BalanceAmount\": \"341.25\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 2,\n      \"ItemCode\": \"1002\",\n      \"ItemName\": \"Sunflower Oil 1.8L\",\n      \"CF\": \"1\",\n      \"Unit\": \"Btl\",\n      \"Qty\": 24,\n      \"FOC\": 2,\n      \"Rate\": 14.75,\n      \"Disc\": 1.5,\n      \"Total\": \"352.50\",\n      \"Tax\": \"17.62\",\n      \"TotalAfterTax\": \"370.12\",\n      \"BalanceAmount\": \"370.12\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 3,\n      \"ItemCode\": \"1003\",\n      \"ItemName\": \"Fresh Milk Full Cream 1L\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pcs\",\n      \"Qty\": 60,\n      \"FOC\": 0,\n      \"Rate\": 5.2,\n      \"Disc\": 0,\n      \"Total\": \"312.00\",\n      \"Tax\": \"0.00\",\n      \"TotalAfterTax\": \"312.00\",\n      \"BalanceAmount\": \"312.00\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 4,\n      \"ItemCode\": \"1004\",\n      \"ItemName\": \"Tea Powder Red Label 500g\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pkt\",\n      \"Qty\": 12,\n      \"FOC\": 0,\n      \"Rate\": 17.9,\n      \"Disc\": 0,\n      \"Total\": \"214.80\",\n      \"Tax\": \"10.74\",\n      \"TotalAfterTax\": \"225.54\",\n      \"BalanceAmount\": \"225.54\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 5,\n      \"ItemCode\": \"1005\",\n      \"ItemName\": \"Sugar 2kg\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pkt\",\n      \"Qty\": 20,\n      \"FOC\": 0,\n      \"Rate\": 7.35,\n      \"Disc\": 0,\n      \"Total\": \"147.00\",\n      \"Tax\": \"7.35\",\n      \"TotalAfterTax\": \"154.35\",\n      \"BalanceAmount\": \"154.35\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    }\n  ]\n}";
+SAMPLES.grv = () => GRV_XML;
+
+/* ---------- App ---------- */
+const ta = $('xml'), gut = $('gut'), jt = $('json'), desk = $('desk'), statusEl = $('status'), jstat = $('jstatus'), warnEl = $('warns');
+const zoomEl = $('zoom'), zoomV = $('zoomv'), cmm = $('cmm');
+const KEY = 'billxml.v2';
+let mode = '80', customMM = 80, dens = 100, cutOn = true, images = {}, lastImages = [], lastMissing = [], tab = 'xml', data = {}, hasRender = false, autoTotals = true, hiLine = 0, errLn = 0, autoFill = true, autoOK = true, autoDepth = 0, autoTimer = 0, repxActive = false, repxW = 0, lastKind = '';
+const IMGKEY = 'billxml.img.v1';
+
+/* Source line of every element, in document order, so a click on the receipt can find its XML line */
+const LINES = new Map(), EID = new Map(), OFFS = [];
+let ELS = [];
+const lineOf = e => LINES.get(e) || 0;
+function indexLines(src, doc) {
+  LINES.clear(); EID.clear(); OFFS.length = 0;
+  ELS = Array.from(doc.getElementsByTagName('*'));
+  const clean = src.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[\s\S]*?>/gi, s => s.replace(/[^\n]/g, ' '));
+  const els = doc.getElementsByTagName('*');
+  const re = /<([A-Za-z_][^\s\/>]*)/g;
+  let m, i = 0, line = 1, last = 0;
+  while (i < els.length && (m = re.exec(clean))) {
+    for (let k = clean.indexOf('\n', last); k !== -1 && k < m.index; k = clean.indexOf('\n', k + 1)) line++;
+    last = m.index;
+    LINES.set(els[i], line); EID.set(els[i], i); OFFS[i] = m.index; i++;
+  }
+}
+
+const thermalMM = () => mode === '58' ? 58 : mode === 'custom' ? clamp(customMM || 80, 40, 120) : 80;
+const padMM = mm => mm <= 60 ? 5 : 4;
+const paperMM = () => repxW || (mode === 'a4' ? 210 : thermalMM());
+const setZoom = z => {
+  z = Math.max(0.4, Math.min(2.6, z));
+  desk.style.setProperty('--zoom', z);
+  zoomEl.value = Math.round(z * 100);
+  zoomV.textContent = Math.round(z * 100) + '%';
+};
+const fitZoom = () => (desk.clientWidth - 32) / (paperMM() * 3.7795);
+
+function parseErr(msg) {
+  let m = /error on line (\d+) at column (\d+):\s*([^\n]*)/i.exec(msg);
+  if (m) return { line: +m[1], text: m[3] };
+  m = /Line Number (\d+), Column (\d+)/i.exec(msg);
+  if (m) return { line: +m[1], text: msg.split('\n')[0].replace(/^XML Parsing Error:\s*/i, '') };
+  return { line: 0, text: msg.split('\n')[0] };
+}
+function drawGutter(errLine) {
+  errLn = errLine;
+  const n = Math.min(ta.value.split('\n').length, 5000);
+  let h = '';
+  for (let i = 1; i <= n; i++) h += '<span' + (i === errLine ? ' class="e"' : i === hiLine ? ' class="h"' : '') + '>' + i + '</span>';
+  gut.innerHTML = h;
+  gut.scrollTop = ta.scrollTop;
+  $('lines').textContent = n + (n === 1 ? ' line' : ' lines');
+}
+function status(ok, msg) {
+  statusEl.className = 'st ' + (ok ? 'ok' : 'bad');
+  statusEl.textContent = (ok ? '● ' : '✕ ') + msg;
+}
+function showWarns(list) {
+  const u = [...new Set(list)];
+  warnEl.hidden = !u.length;
+  if (!u.length) return;
+  const keep = u.slice(0, 12);
+  warnEl.replaceChildren(el('b', '', u.length + (u.length === 1 ? ' note' : ' notes')));
+  const ul = el('ul');
+  u.slice(0, 12).forEach(w => ul.appendChild(el('li', '', w)));
+  if (u.length > 12) ul.appendChild(el('li', '', '+' + (u.length - 12) + ' more'));
+  warnEl.appendChild(ul);
+  if (lastMissing.length) {
+    const b = el('button', 'btn sm', 'Add missing fields to sample data'); b.type = 'button';
+    b.addEventListener('click', () => addMissing());
+    warnEl.appendChild(b);
+  }
+}
+
+function render() {
+  const src = ta.value;
+  desk.style.setProperty('--dens', dens / 100);
+  if (!src.trim()) { drawGutter(0); status(false, 'Paste or open some XML to see the printout.'); return; }
+  const doc = new DOMParser().parseFromString(src, 'application/xml');
+  const pe = doc.getElementsByTagName('parsererror')[0];
+  if (pe) {
+    const e = parseErr(pe.textContent || '');
+    drawGutter(e.line);
+    status(false, (e.line ? 'Line ' + e.line + ': ' : '') + e.text);
+    desk.classList.toggle('stale', hasRender);
+    return;
+  }
+  drawGutter(0);
+  indexLines(src, doc);
+  desk.classList.remove('stale');
+  const root = doc.documentElement, name = root.localName.toLowerCase();
+  const thermal = mode !== 'a4';
+  repxActive = false; repxW = 0;
+  const pm = thermalMM(), pad = padMM(pm), pdots = Math.floor((pm - 2 * pad) * 8);
+  const warns = [];
+  lastMissing = [];
+  let out = [], kind;
+  try {
+    if (name === 'commands') {
+      kind = 'POS Commands XML';
+      const res = posRun(root, data, pdots, lineOf);
+      lastMissing = res.missing;
+      if (autoOK && autoFill && res.missing.length && autoDepth < 4) {
+        autoDepth++;
+        const added = addMissing(true);
+        if (added > 0) { syncJSON(); autoDepth--; if (!autoDepth) autoOK = false; return; }
+        autoDepth--;
+      }
+      res.warns.forEach(w => warns.push(w));
+      const names = res.images.join('|');
+      const changed = names !== lastImages.join('|');
+      lastImages = res.images;
+      out = [posDom(res, { paper: pm, pad, pdots, images, cut: cutOn, warn: w => warns.push(w) })];
+      if (changed && tab === 'img') buildImgs();
+    } else if (isRepx(root)) {
+      kind = 'DevExpress REPX report';
+      repxActive = true;
+      const miss = (key, scope) => { if (!lastMissing.some(m => m.key === key && m.scope === scope)) lastMissing.push({ key, scope }); warns.push('Missing value: ' + key); };
+      const names = [];
+      const res = repxRun(root, data, { images, warn: w => warns.push(w), miss, lineOf, eidOf: e => EID.get(e), needImg: n => { if (!names.includes(n)) names.push(n); } });
+      if (tryAuto()) return;
+      lastImages = names;
+      repxW = res.w;
+      out = res.pages;
+      kind += ' · ' + res.count + (res.count === 1 ? ' page' : ' pages');
+    } else if (name === 'epos-print') {
+      kind = 'Epson ePOS-Print layout';
+      out = eposSlips(root, lineOf).map(s => slipDom(s, pm, pad));
+    } else if (name === 'bill' || name === 'invoice' || name === 'receipt') {
+      kind = 'Simple bill layout';
+      const m = billModel(root, lineOf);
+      out = thermal ? billSlip(m, Math.max(16, Math.floor((pm - 2 * pad) / 1.5))).map(s => slipDom(s, pm, pad)) : [invoiceDom(m)];
+    } else {
+      kind = 'Unknown layout, showing tags as text';
+      out = genericSlips(root, lineOf).map(s => slipDom(s, pm, pad));
+    }
+  } catch (err) {
+    status(false, 'Could not draw this XML: ' + err.message);
+    return;
+  }
+  if (!out.length) desk.replaceChildren(el('div', 'empty', 'Nothing to print in this XML.'));
+  else desk.replaceChildren(...out);
+  applySel();
+  hasRender = true;
+  $('prevpane').classList.toggle('isrepx', repxActive);
+  $('repxinfo').hidden = !repxActive;
+  if (repxActive) {
+    $('repxinfo').textContent = 'From file: ' + Math.round(repxW) + ' mm wide';
+    if (lastKind !== 'repx') setZoom(Math.min(2.2, fitZoom()));
+    if (selEid >= 0 && (!ELS[selEid] || (atr(ELS[selEid], 'Name') || '') !== selName)) repxHide();
+  } else repxHide();
+  lastKind = repxActive ? 'repx' : 'other';
+  if (tab === 'img' && repxActive) buildImgs();
+  showWarns(warns);
+  let msg = 'Valid XML · <' + root.localName + '> · ' + kind;
+  if (!repxActive && !thermal && !out[0].classList.contains('a4')) msg += ' · A4 needs the <bill> layout, so the receipt is shown at 80 mm';
+  if (new Set(warns).size) msg += ' · ' + new Set(warns).size + ' note(s) below the preview';
+  status(true, msg);
+}
+
+/* ---------- Sample data ---------- */
+function readJSON() {
+  try {
+    const v = JSON.parse(jt.value);
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new Error('The top level must be an object { ... }');
+    data = v;
+    jstat.className = 'st ok'; jstat.textContent = '● Valid JSON';
+    return true;
+  } catch (e) {
+    jstat.className = 'st bad'; jstat.textContent = '✕ ' + e.message + ' (the preview keeps the last valid data)';
+    return false;
+  }
+}
+function recalc() {
+  const L = Array.isArray(data.Legs) ? data.Legs : [];
+  let q = 0, t = 0, x = 0, n = 0;
+  L.forEach(g => {
+    const qty = num(g.Qty), tp = num(g.TaxPer), net = r2(qty * num(g.Rate)), tot = net / (1 + tp / 100);
+    g.Total = r2(tot); g.Tax = r2(net - tot); g.NetTotal = net;
+    q += qty; t += g.Total; x += g.Tax; n += net;
+  });
+  data.TotalQty = q; data.ItemTotal = r2(t); data.TaxTotal = r2(x);
+  data.BillAmount = r2(n); data.NetAmount = r2(n);
+  data.BalAmount = r2(Math.max(0, num(data.PaidAmount) - n));
+}
+function syncJSON() {
+  jt.value = JSON.stringify(data, null, 2);
+  jstat.className = 'st ok'; jstat.textContent = '● Valid JSON';
+  render(); update();
+}
+const FIELDS = [['BillNo', 'Bill no.'], ['PosName', 'POS name'], ['UserName', 'User ID'], ['BillDate', 'Bill date and time'], ['TaxLicenseNo', 'Tax license / TRN'], ['PaidAmount', 'Paid amount'], ['TranInformBarcode', 'Bill barcode value']];
+const COLS = [['Barcode', 'Barcode', 'text'], ['Description', 'Description', 'text'], ['Qty', 'Qty', 'number'], ['Rate', 'Rate (with tax)', 'number'], ['TaxPer', 'Tax %', 'number']];
+function mkInput(type, value, label, on) {
+  const i = el('input'); i.type = type === 'number' ? 'number' : 'text';
+  if (type === 'number') i.step = 'any';
+  i.value = value == null ? '' : value; i.setAttribute('aria-label', label);
+  i.addEventListener('input', () => on(i.value));
+  return i;
+}
+function buildProd() {
+  const p = $('prod');
+  p.replaceChildren();
+  const f = el('div', 'fields');
+  FIELDS.forEach(([k, lab]) => {
+    const l = el('label', '', lab);
+    l.appendChild(mkInput('text', data[k], lab, v => {
+      data[k] = k === 'PaidAmount' ? num(v) : v;
+      if (autoTotals) recalc();
+      syncJSON();
+    }));
+    f.appendChild(l);
+  });
+  p.appendChild(f);
+  const bar = el('div', 'pbar');
+  const add = el('button', 'btn sm', 'Add product'); add.type = 'button';
+  add.addEventListener('click', () => {
+    if (!Array.isArray(data.Legs)) data.Legs = [];
+    data.Legs.push({ Barcode: '', Description: 'New item', TaxPer: 5, Qty: 1, Rate: 10.5 });
+    if (autoTotals) recalc(); else { const g = data.Legs[data.Legs.length - 1]; g.Total = 10; g.Tax = 0.5; g.NetTotal = 10.5; }
+    buildProd(); syncJSON();
+  });
+  const rc = el('button', 'btn sm', 'Recalculate totals'); rc.type = 'button';
+  rc.addEventListener('click', () => { recalc(); syncJSON(); });
+  const lab = el('label'); const ck = el('input'); ck.type = 'checkbox'; ck.checked = autoTotals;
+  ck.addEventListener('change', () => { autoTotals = ck.checked; if (autoTotals) { recalc(); syncJSON(); } });
+  lab.append(ck, document.createTextNode('Calculate totals automatically (rate includes tax)'));
+  bar.append(add, rc, lab);
+  p.appendChild(bar);
+  const wrap = el('div', 'ptw'), t = el('table', 'pt'), hr = el('tr');
+  COLS.forEach(([, h]) => hr.appendChild(el('th', '', h)));
+  hr.append(el('th', '', 'Net'), el('th', ''));
+  const th = el('thead'); th.appendChild(hr); t.appendChild(th);
+  const tb = el('tbody');
+  (Array.isArray(data.Legs) ? data.Legs : []).forEach((g, i) => {
+    const r = el('tr');
+    COLS.forEach(([k, h, ty]) => {
+      const td = el('td');
+      td.appendChild(mkInput(ty, g[k], h + ' of item ' + (i + 1), v => {
+        data.Legs[i][k] = ty === 'number' ? num(v) : v;
+        if (autoTotals) recalc();
+        net.textContent = f2(num(data.Legs[i].Qty) * num(data.Legs[i].Rate));
+        syncJSON();
+      }));
+      r.appendChild(td);
+    });
+    const net = el('td', 'net', f2(num(g.Qty) * num(g.Rate)));
+    const rm = el('button', 'btn sm', '×'); rm.type = 'button'; rm.setAttribute('aria-label', 'Remove item ' + (i + 1));
+    rm.addEventListener('click', () => { data.Legs.splice(i, 1); if (autoTotals) recalc(); buildProd(); syncJSON(); });
+    const tdr = el('td'); tdr.appendChild(rm);
+    r.append(net, tdr);
+    tb.appendChild(r);
+  });
+  t.appendChild(tb); wrap.appendChild(t); p.appendChild(wrap);
+  if (!tb.children.length) p.appendChild(el('p', 'muted', 'No products yet. Use Add product, or add a "Legs" list in the Sample data tab.'));
+}
+
+/* ---------- Missing fields and images ---------- */
+const SMART = {
+  slno: (it, i) => i + 1, description: 'Sample item', barcode: '6291002709143', qty: 1, taxper: 5, rate: 10.5,
+  currencyname: 'AED', cardname: 'VISA', cardno: '1234', customername: 'Sample customer',
+  lcustometname: 'Sample customer', lcustometno: 'C0001', billno: '1', posname: 'POS1', username: '01',
+  billdate: () => new Date().toISOString().slice(0, 19)
+};
+function addMissing(noSync) {
+  const dflt = (k, it, i) => {
+    const d = SMART[k.toLowerCase()];
+    if (typeof d === 'function') return d(it, i);
+    if (d !== undefined) return d;
+    return /qty|rate|amount|total|tax|price|per|net|bal|paid|count|points/i.test(k) ? 0 : '';
+  };
+  let n = 0, legs = false;
+  lastMissing.forEach(({ key, scope }) => {
+    if (!scope) { if (!(key in data)) { data[key] = dflt(key, data, 0); n++; } return; }
+    const arrs = [];
+    if (Array.isArray(data[scope])) arrs.push(data[scope]);
+    else if (data[scope] && typeof data[scope] === 'object') arrs.push([data[scope]]);
+    Object.values(data).forEach(v => { if (Array.isArray(v)) v.forEach(it => { if (it && typeof it === 'object' && Array.isArray(it[scope])) arrs.push(it[scope]); }); });
+    arrs.forEach(a => a.forEach((it, i) => {
+      if (it && typeof it === 'object' && !(key in it)) { it[key] = dflt(key, it, i); n++; if (scope === 'Legs') legs = true; }
+    }));
+  });
+  if (legs && autoTotals) recalc();
+  if (!noSync && n) { syncJSON(); if (tab === 'prod') buildProd(); }
+  return n;
+}
+function applySel() {
+  desk.querySelectorAll('.sel').forEach(x => x.classList.remove('sel'));
+  if (hiLine) desk.querySelectorAll('[data-ln="' + hiLine + '"]').forEach(x => x.classList.add('sel'));
+}
+function goLine(n, fromPreview) {
+  if (!n) return;
+  if (tab !== 'xml') setTab('xml');
+  const v = ta.value;
+  let s = 0;
+  for (let i = 1; i < n; i++) { const k = v.indexOf('\n', s); if (k < 0) return; s = k + 1; }
+  let e = v.indexOf('\n', s);
+  if (e < 0) e = v.length;
+  hiLine = n;
+  drawGutter(errLn);
+  applySel();
+  ta.focus({ preventScroll: true });
+  ta.setSelectionRange(s, e);
+  ta.scrollLeft = 0;
+  ta.scrollTop = Math.max(0, 10 + (n - 1) * 20 - ta.clientHeight / 2);
+  gut.scrollTop = ta.scrollTop;
+  status(true, 'Line ' + n + ': ' + v.slice(s, e).trim().slice(0, 120));
+  if (fromPreview && window.matchMedia('(max-width: 860px)').matches) $('t-xml').scrollIntoView({ block: 'nearest' });
+}
+function saveImages() { try { localStorage.setItem(IMGKEY, JSON.stringify(images)); } catch (e) {} }
+function readImage(file, key, done) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => { images[key] = { url: String(rd.result), w: im.naturalWidth, h: im.naturalHeight }; saveImages(); done(true); };
+    im.onerror = () => done(false);
+    im.src = String(rd.result);
+  };
+  rd.onerror = () => done(false);
+  rd.readAsDataURL(file);
+}
+const noExt = k => k.replace(/\.[a-z0-9]+$/i, '');
+function addImages(files) {
+  if (!files.length) return;
+  const need = lastImages.map(imgKey);
+  let pending = files.length, ok = 0;
+  const bad = [];
+  const finish = () => {
+    if (--pending) return;
+    render();
+    if (tab === 'img') buildImgs();
+    const m = $('imgmsg');
+    if (m) m.textContent = ok + ' of ' + files.length + ' file(s) added.' + (bad.length ? ' Not matched to any image name: ' + bad.join(', ') + '.' : '');
+  };
+  files.forEach(f => {
+    const k = imgKey(f.name);
+    let target = need.find(n => n === k) || need.find(n => noExt(n) === noExt(k));
+    if (!target && files.length === 1) target = need.find(n => !images[n]);
+    if (!target) { bad.push(f.name); finish(); return; }
+    readImage(f, target, good => { if (good) ok++; else bad.push(f.name); finish(); });
+  });
+}
+function buildImgs() {
+  const p = $('img');
+  p.replaceChildren();
+  p.appendChild(el('p', 'muted', lastImages.length
+    ? 'These are the image files the template asks for. Pick several at once and they are matched by file name, or choose one per row.'
+    : 'This template does not define any images.'));
+  const top = el('div', 'pbar');
+  const all = el('button', 'btn sm', 'Choose several files'); all.type = 'button';
+  all.addEventListener('click', () => $('logo').click());
+  top.append(all, el('span', 'muted', ''));
+  top.lastChild.id = 'imgmsg';
+  if (lastImages.length) p.appendChild(top);
+  lastImages.forEach(name => {
+    const k = imgKey(name), have = images[k];
+    const r = el('div', 'imgrow2');
+    const th = el('div', 'th');
+    if (have) { const im = el('img'); im.src = have.url; im.alt = name; th.appendChild(im); } else th.textContent = 'none';
+    const info = el('div');
+    info.append(el('div', 'nm', name), el('div', have ? 'ok' : 'no', have ? 'Uploaded (' + have.w + ' x ' + have.h + ' dots)' : 'Not uploaded'));
+    const acts = el('div', 'acts');
+    const inp = el('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.hidden = true;
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (f) readImage(f, k, good => { if (good) { render(); buildImgs(); } else $('imgmsg').textContent = 'That file could not be read as an image.'; });
+    });
+    const ch = el('button', 'btn sm', have ? 'Replace' : 'Choose file'); ch.type = 'button';
+    ch.addEventListener('click', () => inp.click());
+    acts.append(ch, inp);
+    if (have) {
+      const rm = el('button', 'btn sm', 'Remove'); rm.type = 'button';
+      rm.addEventListener('click', () => { delete images[k]; saveImages(); render(); buildImgs(); });
+      acts.appendChild(rm);
+    }
+    r.append(th, info, acts);
+    p.appendChild(r);
+  });
+}
+
+function tryAuto() {
+  if (autoOK && autoFill && lastMissing.length && autoDepth < 4) {
+    autoDepth++;
+    const added = addMissing(true);
+    if (added > 0) { syncJSON(); autoDepth--; if (!autoDepth) autoOK = false; return true; }
+    autoDepth--;
+  }
+  return false;
+}
+/* ---------- REPX editing: property panel that writes back into the XML ---------- */
+const REPX_CTL = /^XR(Label|TableCell|Table|BarCode|PageInfo|CheckBox|PictureBox|Line|Panel|RichText|Shape)$/;
+const REPX_ALIGNS = ['TopLeft', 'TopCenter', 'TopRight', 'MiddleLeft', 'MiddleCenter', 'MiddleRight', 'BottomLeft', 'BottomCenter', 'BottomRight'];
+let selEid = -1, selName = '';
+const hist = [];
+let histKey = '', histAt = 0;
+
+function tagEnd(src, off) {
+  let q = '';
+  for (let i = off; i < src.length; i++) {
+    const ch = src[i];
+    if (q) { if (ch === q) q = ''; }
+    else if (ch === '"' || ch === "'") q = ch;
+    else if (ch === '>') return i + 1;
+  }
+  return src.length;
+}
+const escAttr = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+function setAttr(tagText, name, value) {
+  const re = new RegExp('(\\s' + name + '\\s*=\\s*)("[^"]*"|\'[^\']*\')');
+  if (re.test(tagText)) return tagText.replace(re, (m, a) => a + '"' + escAttr(value) + '"');
+  return tagText.replace(/\s*(\/?>)$/, (m, g) => ' ' + name + '="' + escAttr(value) + '"' + g);
+}
+function patchAttr(e, name, value) {
+  const i = EID.get(e), off = OFFS[i], src = ta.value;
+  if (off == null || src[off] !== '<') return false;
+  const end = tagEnd(src, off), old = src.slice(off, end), now = setAttr(old, name, value);
+  if (now === old) return true;
+  const t = Date.now();
+  if (!hist.length || histKey !== name + ':' + i || t - histAt > 900) { hist.push(src); if (hist.length > 60) hist.shift(); }
+  histKey = name + ':' + i; histAt = t;
+  ta.setRangeText(now, off, end, 'preserve');
+  ta.dispatchEvent(new Event('input'));
+  clearTimeout(timer);
+  render();
+  return true;
+}
+function repxUndo() {
+  if (!hist.length) return;
+  ta.value = hist.pop();
+  ta.dispatchEvent(new Event('input'));
+  clearTimeout(timer);
+  render();
+  if (selEid >= 0) repxSelect(selEid);
+}
+const pairText = (x, y, sep) => x + sep + y;
+function inheritedFont(e) {
+  for (let p = e.parentElement; p; p = p.parentElement) if (atr(p, 'Font')) return repxFont(atr(p, 'Font'));
+  return repxFont('');
+}
+function repxHide() { const b = $('selbar'); b.hidden = true; selEid = -1; }
+
+function repxSelect(eid) {
+  const e = ELS[eid], box = $('selbar');
+  if (!e || !repxActive || !REPX_CTL.test(cType(e))) { repxHide(); return; }
+  selEid = eid; selName = atr(e, 'Name') || '';
+  const t = cType(e), g = geom(e), root = ELS[0];
+  const ul = REPX_UNIT_LABEL[String(atr(root, 'ReportUnit') || 'HundredthsOfAnInch').toLowerCase()] || '';
+  const font = atr(e, 'Font') ? repxFont(atr(e, 'Font')) : inheritedFont(e);
+  const labelLike = /^XR(Label|TableCell|CheckBox|BarCode|RichText)$/.test(t);
+  const cur = () => ELS[selEid];
+  const curEb = () => { const c = cur(); return c ? subItems(c, 'ExpressionBindings').find(x => /^text$/i.test(atr(x, 'PropertyName') || '')) : null; };
+  box.replaceChildren();
+
+  const head = el('div', 'sbh');
+  head.appendChild(el('b', '', t + ' \u00b7 ' + (selName || 'unnamed')));
+  const hb = el('span', 'sbb');
+  const undo = el('button', 'btn sm', 'Undo'); undo.type = 'button'; undo.addEventListener('click', repxUndo);
+  const close = el('button', 'btn sm', 'Close'); close.type = 'button'; close.addEventListener('click', repxHide);
+  hb.append(undo, close);
+  head.appendChild(hb);
+  box.appendChild(head);
+
+  const grid = el('div', 'sbg');
+  const field = (lab, inp, wide) => { const l = el('label', wide ? 'wide' : '', lab); l.appendChild(inp); grid.appendChild(l); return inp; };
+  const text = (val, on, dis) => { const i = el('input'); i.type = 'text'; i.value = val == null ? '' : val; i.disabled = !!dis; i.addEventListener('input', () => on(i.value)); return i; };
+  const numf = (val, on) => { const i = el('input'); i.type = 'number'; i.step = 'any'; i.value = val; i.addEventListener('input', () => { if (i.value !== '') on(i.value); }); return i; };
+  const chk = (val, on) => { const i = el('input'); i.type = 'checkbox'; i.checked = !!val; i.addEventListener('change', () => on(i.checked)); return i; };
+
+  if (labelLike) {
+    const eb = subItems(e, 'ExpressionBindings').find(x => /^text$/i.test(atr(x, 'PropertyName') || ''));
+    if (t !== 'XRBarCode') field('Text', text(atr(e, 'Text'), v => patchAttr(cur(), 'Text', v)), true);
+    const ex = field('Expression', text(eb ? atr(eb, 'Expression') : '', v => patchAttr(curEb(), 'Expression', v), !eb), true);
+    if (!eb) ex.placeholder = 'No expression on this control';
+    field('Format', text(atr(e, 'TextFormatString'), v => patchAttr(cur(), 'TextFormatString', v)));
+  }
+  if (t === 'XRTableCell') {
+    field('Weight', numf(num(atr(e, 'Weight')) || 1, v => patchAttr(cur(), 'Weight', v)));
+  } else {
+    const xi = numf(g.x, () => setLoc()), yi = numf(g.y, () => setLoc());
+    const wi = numf(g.w, () => setSize()), hi = numf(g.h, () => setSize());
+    const setLoc = () => patchAttr(cur(), 'LocationFloat', pairText(xi.value || 0, yi.value || 0, ', '));
+    const setSize = () => patchAttr(cur(), 'SizeF', pairText(wi.value || 0, hi.value || 0, ','));
+    field('X (' + ul + ')', xi); field('Y (' + ul + ')', yi); field('Width', wi); field('Height', hi);
+  }
+  if (labelLike || t === 'XRPageInfo') {
+    const fam = text(font.fam, () => setFont());
+    const sz = numf(font.pt, () => setFont());
+    const fb = chk(font.b, () => setFont()), fi = chk(font.i, () => setFont()), fu = chk(font.u, () => setFont());
+    const setFont = () => {
+      const st = [fb.checked && 'Bold', fi.checked && 'Italic', fu.checked && 'Underline'].filter(Boolean);
+      patchAttr(cur(), 'Font', (fam.value || 'Arial') + ', ' + (sz.value || font.pt) + 'pt' + (st.length ? ', style=' + st.join(', ') : ''));
+    };
+    field('Font', fam); field('Size (pt)', sz); field('Bold', fb); field('Italic', fi); field('Underline', fu);
+    const al = el('select');
+    REPX_ALIGNS.forEach(a => { const o = el('option', '', a); o.value = a; al.appendChild(o); });
+    al.value = atr(e, 'TextAlignment') || 'TopLeft';
+    al.addEventListener('change', () => patchAttr(cur(), 'TextAlignment', al.value));
+    field('Align', al);
+  }
+  if (t !== 'XRPictureBox' && t !== 'XRLine') {
+    field('Text color', text(atr(e, 'ForeColor'), v => patchAttr(cur(), 'ForeColor', v)));
+  }
+  field('Background', text(atr(e, 'BackColor'), v => patchAttr(cur(), 'BackColor', v)));
+  field('Visible', chk(!/^false$/i.test(atr(e, 'Visible') || 'true'), v => patchAttr(cur(), 'Visible', v ? 'true' : 'false')));
+  box.appendChild(grid);
+  box.hidden = false;
+}
+function selectByLine(n) {
+  if (!repxActive) return;
+  for (let i = 0; i < ELS.length; i++) {
+    if (LINES.get(ELS[i]) === n && REPX_CTL.test(cType(ELS[i]))) { repxSelect(i); return; }
+  }
+}
+
+/* ---------- Wiring ---------- */
+let timer = 0, saveTimer = 0;
+function update() {
+  clearTimeout(timer);
+  timer = setTimeout(render, 90);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(KEY, JSON.stringify({ xml: ta.value, json: jt.value, mode, customMM, dens, cutOn, autoFill })); } catch (e) {}
+  }, 400);
+}
+function setText(t) {
+  autoOK = true;
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('insertText', false, t); } catch (e) {}
+  if (!ok || ta.value !== t) ta.value = t;
+  ta.scrollTop = 0; ta.setSelectionRange(0, 0);
+  render(); update();
+}
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('#paper button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  cmm.disabled = m !== 'custom';
+  setZoom(Math.min(m === 'a4' ? 9 : 1.6, fitZoom()));
+  render(); update();
+}
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tab === t)));
+  ['xml', 'json', 'prod', 'img'].forEach(k => { $('t-' + k).hidden = k !== t; });
+  $('lines').hidden = t !== 'xml';
+  if (t === 'prod') buildProd();
+  if (t === 'img') buildImgs();
+}
+function tabKey(box) {
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      let ok = false;
+      try { ok = document.execCommand('insertText', false, '  '); } catch (x) {}
+      if (!ok) { box.setRangeText('  ', box.selectionStart, box.selectionEnd, 'end'); box.dispatchEvent(new Event('input')); }
+    }
+  });
+}
+
+ta.addEventListener('input', () => {
+  drawGutter(0); update();
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(() => { autoOK = true; render(); }, 1500);
+});
+const caretSync = () => {
+  const n = ta.value.slice(0, ta.selectionStart).split('\n').length;
+  if (n !== hiLine) { hiLine = n; drawGutter(errLn); applySel(); selectByLine(n); }
+};
+ta.addEventListener('click', caretSync);
+ta.addEventListener('keyup', caretSync);
+desk.addEventListener('click', e => {
+  const t = e.target.closest && e.target.closest('[data-ln]');
+  if (t) { if (t.dataset.eid != null && repxActive) repxSelect(+t.dataset.eid); goLine(+t.dataset.ln, true); }
+});
+$('expand').addEventListener('click', () => {
+  const on = $('split').classList.toggle('exp');
+  $('expand').textContent = on ? 'Shrink' : 'Expand';
+  if (!on) return;
+  ta.focus({ preventScroll: true });
+});
+$('auto').addEventListener('change', e => { autoFill = e.target.checked; if (autoFill) { autoOK = true; render(); } update(); });
+ta.addEventListener('scroll', () => { gut.scrollTop = ta.scrollTop; });
+jt.addEventListener('input', () => { if (readJSON()) { render(); } update(); });
+tabKey(ta); tabKey(jt);
+document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+document.querySelectorAll('#paper button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+zoomEl.addEventListener('input', () => setZoom(num(zoomEl.value) / 100));
+$('fit').addEventListener('click', () => setZoom(fitZoom()));
+cmm.addEventListener('input', () => { customMM = num(cmm.value); if (customMM >= 40) { render(); update(); } });
+$('dens').addEventListener('input', e => { dens = num(e.target.value); desk.style.setProperty('--dens', dens / 100); update(); });
+$('cut').addEventListener('change', e => { cutOn = e.target.checked; render(); update(); });
+$('sample').addEventListener('change', e => {
+  const k = e.target.value, f = SAMPLES[k];
+  if (f) {
+    if (k === 'pos') { jt.value = POS_DATA; readJSON(); buildProd(); }
+    if (k === 'repx') { jt.value = REPX_DATA; readJSON(); buildProd(); }
+    if (k === 'grv') { jt.value = GRV_DATA; readJSON(); buildProd(); }
+    setText(f());
+  }
+  e.target.value = '';
+});
+$('open').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => setText(String(rd.result));
+  rd.readAsText(f);
+  e.target.value = '';
+});
+$('logobtn').addEventListener('click', () => $('logo').click());
+$('logo').addEventListener('change', e => {
+  addImages([...(e.target.files || [])]);
+  e.target.value = '';
+});
+$('copy').addEventListener('click', () => {
+  const b = $('copy');
+  const done = t => { b.textContent = t; setTimeout(() => { b.textContent = 'Copy XML'; }, 1400); };
+  const fallback = () => {
+    ta.focus(); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    done(ok ? 'Copied' : 'Selected, press Ctrl+C');
+  };
+  try { navigator.clipboard.writeText(ta.value).then(() => done('Copied'), fallback); } catch (e) { fallback(); }
+});
+
+/* Downloads and printing only work when the page is opened as a local file */
+const save = (name, text, type) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+};
+if (location.protocol === 'file:') document.querySelectorAll('.local').forEach(b => { b.hidden = false; });
+$('dlxml').addEventListener('click', () => save('receipt-template.xml', ta.value, 'application/xml'));
+$('dljson').addEventListener('click', () => save('sample-data.json', jt.value, 'application/json'));
+$('prn').addEventListener('click', () => window.print());
+
+/* Start with the last session, or the POS Commands sample */
+let startXml = SAMPLES.pos(), startJson = POS_DATA;
+try {
+  const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+  if (s) {
+    if (typeof s.xml === 'string' && s.xml.trim()) startXml = s.xml;
+    if (typeof s.json === 'string' && s.json.trim()) startJson = s.json;
+    if (['58', '80', 'custom', 'a4'].includes(s.mode)) mode = s.mode;
+    if (s.customMM >= 40) customMM = s.customMM;
+    if (s.dens >= 35) dens = s.dens;
+    if (typeof s.cutOn === 'boolean') cutOn = s.cutOn;
+    if (typeof s.autoFill === 'boolean') autoFill = s.autoFill;
+  }
+} catch (e) {}
+try { const im = JSON.parse(localStorage.getItem(IMGKEY) || 'null'); if (im && typeof im === 'object') images = im; } catch (e) {}
+ta.value = startXml;
+jt.value = startJson;
+if (!readJSON()) { jt.value = POS_DATA; readJSON(); }
+cmm.value = customMM; $('dens').value = dens; $('cut').checked = cutOn; $('auto').checked = autoFill;
+setTab('xml');
+setMode(mode);
+})();
+</script>
+
+</body>
+</html>
