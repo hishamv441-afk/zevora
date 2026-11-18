@@ -1937,7 +1937,7 @@ function zplDom(res, o) {
           try {
             const svg = document.createElementNS(SVGNS, 'svg');
             let fmt = 'CODE128', val = e.text;
-            if (e.set === ';' && /^\d+$/.test(val)) { fmt = 'CODE128C'; if (val.length % 2) val = '0' + val; }
+            if (e.set === ';' && /^\d+$/.test(val) && val.length % 2 === 0) fmt = 'CODE128C'; /* odd digit count: subset C pairs, then B for the last digit (JsBarcode auto does the same) */
             else if (e.set === ':') fmt = 'CODE128B';
             else if (e.set === '9') fmt = 'CODE128A';
             JsBarcode(svg, val, { format: fmt, width: Math.max(1, Math.round(e.bw)), height: h, displayValue: false, margin: 0, background: 'transparent', lineColor: 'currentColor' });
@@ -1948,7 +1948,7 @@ function zplDom(res, o) {
           } catch (err) { o.warn('Barcode "' + e.text + '" is not valid CODE128 text.'); }
         } else if (e.text) o.warn('Barcode library could not load, so a placeholder barcode is shown.');
         if (!ok) {
-          const num = e.set === ';' && /^\d+$/.test(e.text), est = Math.round(((num ? Math.ceil(e.text.length / 2) : e.text.length) * 11 + 35) * e.bw);
+          const len = e.text.length, dg = /^\d+$/.test(e.text) && (e.set === ';' || len >= 4), est = Math.round(((dg ? Math.floor(len / 2) * 11 + (len % 2 ? 22 : 0) : len * 11) + 35) * e.bw);
           const ph = el('div', 'zbph'); ph.style.width = Z(est); ph.style.height = Z(h); n.appendChild(ph);
         }
         if (e.hri) {
