@@ -219,6 +219,17 @@ body{
 .sbg input:disabled{opacity:.5}
 
 .pos .imgrow.tight{margin:0}
+
+.zlabel{position:relative;flex:none;background:var(--paper);color:var(--ink);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.18);font-family:Arial,"Liberation Sans",Helvetica,sans-serif;border-radius:calc(1.2 * var(--mm))}
+.zlabel>*{position:absolute}
+.zt{font-weight:700;white-space:pre;transform-origin:0 0;opacity:var(--dens,1)}
+.zb{opacity:var(--dens,1)}
+.zhri{font-family:var(--mono);white-space:pre}
+.zbph{background:repeating-linear-gradient(90deg,currentColor 0 calc(1.4*var(--zd)),transparent calc(1.4*var(--zd)) calc(3.2*var(--zd)))}
+.zq,.zg{box-sizing:border-box}
+.zq{border:calc(2*var(--zd)) dashed var(--ink);display:grid;place-items:center;text-align:center;font:calc(14*var(--zd))/1.3 var(--mono);white-space:pre-wrap;overflow:hidden;opacity:.6}
+.zlabel [data-ln]{cursor:pointer}
+.zlabel [data-ln]:hover,.zlabel .sel{background:color-mix(in srgb,var(--accent) 24%,transparent);outline:1px solid var(--accent)}
 </style>
 <div class="app">
   <header class="bar">
@@ -228,6 +239,7 @@ body{
         <option value="">Load sample…</option>
         <option value="pos">Your POS Commands XML + data</option>
         <option value="repx">DevExpress REPX report + data</option>
+        <option value="zpl">Zebra label (ZPL)</option>
         <option value="prn">Raw printer file (.prn, ESC/POS)</option>
         <option value="grv">Your GRV Purchase Invoice (A4 .repx)</option>
         <option value="bill">Simple bill XML</option>
@@ -235,7 +247,7 @@ body{
         <option value="other">Unknown XML layout</option>
       </select>
       <button type="button" class="btn" id="open">Open XML file</button>
-      <input type="file" id="file" accept=".xml,.repx,.prn,.bin,.txt,text/xml,application/xml" hidden>
+      <input type="file" id="file" accept=".xml,.repx,.prn,.zpl,.bin,.txt,text/xml,application/xml" hidden>
       <button type="button" class="btn" id="logobtn">Upload images</button>
       <input type="file" id="logo" accept="image/*" multiple hidden>
       <button type="button" class="btn" id="copy">Copy XML</button>
@@ -244,7 +256,7 @@ body{
       <button type="button" class="btn local" id="prn" hidden>Print</button>
     </div>
   </header>
-  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
+  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files, Zebra ZPL labels with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
   <main class="split" id="split">
     <section class="pane" aria-label="Editor">
       <div class="ph">
@@ -294,6 +306,7 @@ body{
         <label class="cw">Custom width <input type="number" id="cmm" min="40" max="120" step="1" value="80" disabled> mm</label>
         <label class="dn">Ink density <input type="range" id="dens" min="35" max="100" step="5" value="100"></label>
         <label class="ck"><input type="checkbox" id="cut" checked> Cut line</label>
+        <label class="cw" id="zdw" hidden>Printer <select id="zdpi"><option value="152">152</option><option value="203" selected>203</option><option value="300">300</option><option value="600">600</option></select> dpi</label>
         <label class="ck"><input type="checkbox" id="auto" checked> Auto-fill missing data</label>
       </div>
       <div class="desk" id="desk"></div>
@@ -1779,6 +1792,247 @@ const PRN_SAMPLE = [
 ].join('\n');
 SAMPLES.prn = () => PRN_SAMPLE;
 
+/* ---------- ZPL: Zebra label language ---------- */
+const isZplSrc = s => /\^XA/i.test(s) && !/^\s*</.test(s);
+let zdpi = 203;
+const ZPL_DEFAULTS = k => /bar|code|ean|upc/i.test(k) ? '5053990161607' : /price|amount|mrp|rate|total/i.test(k) ? '4.00' : /name|desc|item|product/i.test(k) ? 'PRINGLES PAPRIKA 40 GM' : /date/i.test(k) ? '18-11-2026' : /qty|count/i.test(k) ? '1' : 'Sample';
+
+function zplHex(s, ind) {
+  if (!ind) return s;
+  const re = new RegExp('\\' + ind + '([0-9A-Fa-f]{2})', 'g');
+  const bytes = [];
+  let out = '', last = 0, m;
+  const flush = () => { if (bytes.length) { try { out += new TextDecoder('utf-8').decode(Uint8Array.from(bytes)); } catch (e) { bytes.forEach(b => { out += String.fromCharCode(b); }); } bytes.length = 0; } };
+  while ((m = re.exec(s))) {
+    if (m.index > last) { flush(); out += s.slice(last, m.index); }
+    bytes.push(parseInt(m[1], 16)); last = m.index + 3;
+  }
+  flush(); out += s.slice(last);
+  return out;
+}
+
+function zplRun(src, dat) {
+  const warns = [], seen = new Set(), keys = [], labels = [];
+  const note = k => { if (!seen.has(k)) { seen.add(k); warns.push('Command ^' + k + ' is not drawn in the preview (it was skipped).'); } };
+  src = src.replace(/<#([^<>#\r\n][^<>\r\n]*)>/g, (m, k) => {
+    if (!keys.includes(k)) keys.push(k);
+    const v = dat[k];
+    return v == null ? m : String(v);
+  });
+  /* tokenise on ^, remembering the source line of each command */
+  const toks = []; let pos = 0, line = 1;
+  src.split('^').forEach((t, idx) => {
+    if (idx > 0) toks.push({ t, ln: line });
+    line += (t.match(/\n/g) || []).length;
+    pos += t.length + 1;
+  });
+  let L = null, cfg = { pw: 0, ll: 0, lh: [0, 0], ml: 0 };
+  let fx = 0, fy = 0, ft = false, fr = false, font = { f: '0', o: 'N', h: 30, w: 0 }, cfont = { f: '0', h: 30, w: 0 }, ind = '', by = { w: 2, r: 3, h: 10 }, fb = null, bar = null, fw = 'N', cur = null;
+  const startLabel = () => { L = { els: [], pw: cfg.pw, ll: cfg.ll }; cur = null; };
+  startLabel();
+  const num = (v, d) => { const n = parseFloat(v); return isNaN(n) ? d : n; };
+  toks.forEach(({ t, ln }) => {
+    let cmd = t[0] === 'A' && t.length > 1 ? 'A' : t.slice(0, 2).toUpperCase();
+    const body = cmd === 'A' ? t.slice(1) : t.slice(2);
+    const raw = cmd === 'FD' ? body.replace(/[\r\n]+$/, '') : body.split(/[\r\n]/)[0];
+    const p = raw.split(',').map(x => x.trim());
+    switch (cmd) {
+      case 'XA': startLabel(); cfg = { pw: cfg.pw, ll: cfg.ll, lh: [0, 0] }; fx = fy = 0; ft = fr = false; fb = null; bar = null; ind = ''; break;
+      case 'XZ': if (L.els.length) labels.push(L); startLabel(); break;
+      case 'PW': L.pw = cfg.pw = num(p[0], 0); break;
+      case 'LL': L.ll = cfg.ll = num(p[0], 0); break;
+      case 'LH': cfg.lh = [num(p[0], 0), num(p[1], 0)]; break;
+      case 'FO': fx = num(p[0], 0) + cfg.lh[0]; fy = num(p[1], 0) + cfg.lh[1]; ft = false; break;
+      case 'FT': fx = num(p[0], 0) + cfg.lh[0]; fy = num(p[1], 0) + cfg.lh[1]; ft = true; break;
+      case 'FW': fw = (p[0] || 'N').toUpperCase(); break;
+      case 'FR': fr = true; break;
+      case 'FH': ind = p[0] ? p[0][0] : '_'; break;
+      case 'CF': cfont = { f: p[0] || '0', h: num(p[1], 30), w: num(p[2], 0) }; break;
+      case 'BY': by = { w: num(p[0], 2), r: num(p[1], 3), h: num(p[2], by.h) }; break;
+      case 'A': {
+        const m = /^([A-Z0-9@])([NRIB])?/i.exec(raw);
+        font = { f: m ? m[1] : '0', o: m && m[2] ? m[2].toUpperCase() : fw, h: num(p[1], cfont.h), w: num(p[2], 0) };
+        if (!p[1] && !m) font = { f: cfont.f, o: fw, h: cfont.h, w: cfont.w };
+        break;
+      }
+      case 'FB': fb = { w: num(p[0], 0), lines: num(p[1], 1), sp: num(p[2], 0), j: (p[3] || 'L').toUpperCase() }; break;
+      case 'GB': L.els.push({ k: 'box', x: fx, y: fy, w: num(p[0], 1), h: num(p[1], 1), t: num(p[2], 1), c: (p[3] || 'B').toUpperCase(), r: num(p[4], 0), ln }); break;
+      case 'GC': { const d = num(p[0], 3); L.els.push({ k: 'circ', x: fx, y: fy, d, t: num(p[1], 1), c: (p[2] || 'B').toUpperCase(), ln }); break; }
+      case 'BC': case 'B3': case 'BA': case 'BE': case 'BU': case 'B8': case 'B9': case 'BQ': case 'BX': case 'B7': case 'BD': case 'BK': case 'BI': case 'BJ': case 'BL': case 'BM': case 'BP': case 'BS': case 'BZ': {
+        const o = (/^[NRIB]/i.test(raw) ? raw[0] : fw).toUpperCase();
+        if (cmd === 'BC') bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: /^Y$/i.test(p[3] || 'N') };
+        else if (cmd === 'BQ') bar = { k: 'qr', o, m: num(p[2], 4) };
+        else if (cmd === 'BE' || cmd === 'B8' || cmd === 'BU' || cmd === 'B3' || cmd === 'BA') bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: false, as: cmd };
+        else { bar = { k: 'other', cmd }; }
+        break;
+      }
+      case 'FD': {
+        const txt = zplHex(raw, ind);
+        const ft0 = ft, x = fx, y = fy;
+        if (bar) {
+          const b = bar; bar = null;
+          if (b.k === 'other') { note(b.cmd + ' (this barcode type)'); L.els.push({ k: 'unk', x, y, ft: ft0, ln, text: txt, name: b.cmd }); }
+          else if (b.k === 'qr') L.els.push({ k: 'qr', x, y, ft: ft0, ln, text: txt.replace(/^[A-Z]{1,2},/, ''), m: b.m });
+          else {
+            if (b.as) warns.push('Barcode ^' + b.as + ' is drawn in CODE128 style, so the bars differ from the real one.');
+            if (b.o !== 'N') warns.push('Rotated barcodes are drawn upright in the preview.');
+            L.els.push({ k: 'bar', x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, '').replace(/^>[0-9A-Za-z]/, ''), bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
+          }
+        } else {
+          const f = font || cfont;
+          L.els.push({ k: 'txt', x, y, ft: ft0, ln, text: txt, f: f.f, o: f.o, h: f.h, w: f.w, fb, fr });
+          if (f.f !== '0' && !/^[A-H]$/i.test(f.f)) note('A' + f.f + ' (this font)');
+        }
+        fb = null; fr = false;
+        break;
+      }
+      case 'FS': ft = false; fr = false; break;
+      case 'FP': case 'CI': case 'CW': case 'PQ': case 'PR': case 'PO': case 'PM': case 'LT': case 'LS': case 'MM': case 'MN': case 'MT': case 'JM': case 'JU': case 'LR': case 'PA': case 'MD': case 'FX': case 'FN': case 'SD': case 'JS': case 'PF': case 'XF': case 'DF': case '':
+        break;
+      default:
+        if (/^[A-Z]{2}$/.test(cmd)) note(cmd);
+    }
+  });
+  if (L.els.length) labels.push(L);
+  return { labels, warns, keys, cfg };
+}
+
+function zplDom(res, o) {
+  const dpi = o.dpi, SC = 25.4 / dpi / 0.125; /* ratio to the 8-dot/mm base unit used by --dot */
+  const out = [];
+  res.labels.forEach(L => {
+    const pw = L.pw || 812, ll = L.ll || Math.max(...L.els.map(e => (e.y || 0) + (e.h || 40))) + 20;
+    const d = el('div', 'zlabel');
+    d.style.setProperty('--zd', 'calc(' + (25.4 / dpi) + ' * var(--mm))');
+    d.style.width = 'calc(' + pw + ' * var(--zd))';
+    d.style.height = 'calc(' + ll + ' * var(--zd))';
+    const Z = n => 'calc(' + n + ' * var(--zd))';
+    L.els.forEach(e => {
+      let n;
+      if (e.k === 'txt') {
+        const h = Math.max(6, e.h), isSc = e.f === '0';
+        n = el('div', 'zt', e.text);
+        const wr = e.w && isSc ? e.w / h : 1;
+        n.style.fontSize = Z(isSc ? h : h * 0.95);
+        n.style.lineHeight = Z(h);
+        if (!isSc) n.style.fontFamily = 'var(--mono)', n.style.fontWeight = '400';
+        const sx = Math.max(0.3, Math.min(3, wr));
+        let tx = '', ox = '0 0', top = e.y, left = e.x;
+        if (e.ft) top = e.y - h * 0.85;
+        if (e.fb && e.fb.w) { n.style.width = Z(e.fb.w); n.style.whiteSpace = 'normal'; n.style.textAlign = { C: 'center', R: 'right', J: 'justify' }[e.fb.j] || 'left'; n.style.maxHeight = Z(h * Math.max(1, e.fb.lines) + e.fb.sp * e.fb.lines); n.style.overflow = 'hidden'; }
+        else n.style.whiteSpace = 'pre';
+        if (sx !== 1) tx += 'scaleX(' + sx + ') ';
+        if (e.o === 'R') { tx = 'rotate(90deg) ' + tx; ox = '0 0'; left = e.x + (e.ft ? 0 : h); top = e.y; if (e.ft) { left = e.x + h * 0.15; } }
+        else if (e.o === 'I') { tx = 'rotate(180deg) ' + tx; ox = '0 0'; }
+        else if (e.o === 'B') { tx = 'rotate(270deg) ' + tx; ox = '0 0'; top = e.y + (e.ft ? 0 : 0); }
+        n.style.left = Z(left); n.style.top = Z(top);
+        n.style.transformOrigin = ox; if (tx) n.style.transform = tx;
+        if (e.fr) n.classList.add('zr');
+      } else if (e.k === 'bar') {
+        n = el('div', 'zb');
+        const h = Math.max(10, e.h), top = e.ft ? e.y - h : e.y;
+        n.style.left = Z(e.x); n.style.top = Z(top);
+        let ok = false;
+        if (window.JsBarcode && e.text) {
+          try {
+            const svg = document.createElementNS(SVGNS, 'svg');
+            JsBarcode(svg, e.text, { format: 'CODE128', width: Math.max(1, Math.round(e.bw)), height: h, displayValue: false, margin: 0, background: 'transparent', lineColor: 'currentColor' });
+            const w = svg.getAttribute('width'), hh = svg.getAttribute('height');
+            svg.setAttribute('viewBox', '0 0 ' + w + ' ' + hh); svg.removeAttribute('width'); svg.removeAttribute('height');
+            svg.style.width = Z(parseFloat(w)); svg.style.height = Z(parseFloat(hh)); svg.style.display = 'block';
+            n.appendChild(svg); ok = true;
+          } catch (err) { o.warn('Barcode "' + e.text + '" is not valid CODE128 text.'); }
+        } else if (e.text) o.warn('Barcode library could not load, so a placeholder barcode is shown.');
+        if (!ok) {
+          const est = Math.round((e.text.length * 11 * (/^\d+$/.test(e.text) ? 0.5 : 1) + 35) * e.bw);
+          const ph = el('div', 'zbph'); ph.style.width = Z(est); ph.style.height = Z(h); n.appendChild(ph);
+        }
+        if (e.hri) {
+          const t = el('div', 'zhri', e.text);
+          const fs = 18;
+          t.style.fontSize = Z(fs); t.style.lineHeight = Z(fs + 4);
+          if (e.above) { t.style.position = 'absolute'; t.style.bottom = '100%'; t.style.left = '0'; } else t.style.marginTop = Z(3);
+          n.appendChild(t);
+        }
+      } else if (e.k === 'qr') {
+        n = el('div', 'zq', 'QR code\n' + e.text);
+        const s = Math.max(80, e.m * 25);
+        n.style.left = Z(e.x); n.style.top = Z(e.ft ? e.y - s : e.y); n.style.width = n.style.height = Z(s);
+      } else if (e.k === 'box') {
+        n = el('div', 'zg');
+        const w = Math.max(e.w, e.t), h = Math.max(e.h, e.t);
+        n.style.left = Z(e.x); n.style.top = Z(e.y); n.style.width = Z(w); n.style.height = Z(h);
+        const full = e.t * 2 >= Math.min(w, h);
+        n.style.border = full ? '0' : Z(e.t) + ' solid ' + (e.c === 'W' ? 'var(--paper)' : 'currentColor');
+        if (full) n.style.background = e.c === 'W' ? 'var(--paper)' : 'currentColor';
+        if (e.r) n.style.borderRadius = Z(Math.min(w, h) / 2 * e.r / 8);
+      } else if (e.k === 'circ') {
+        n = el('div', 'zg');
+        n.style.left = Z(e.x); n.style.top = Z(e.y); n.style.width = n.style.height = Z(e.d);
+        n.style.borderRadius = '50%'; n.style.border = Z(e.t) + ' solid currentColor';
+      } else if (e.k === 'unk') {
+        n = el('div', 'zq', e.name + '\n' + e.text);
+        n.style.left = Z(e.x); n.style.top = Z(e.ft ? e.y - 80 : e.y); n.style.width = Z(160); n.style.height = Z(80);
+      }
+      if (e.k === 'txt' && e.ft && e.y < e.h * 0.7) o.warn('Text "' + e.text + '" (line ' + e.ln + ') starts at y=' + e.y + ' with height ' + e.h + ', so most of it falls above the label edge.');
+      if (n) { if (e.ln) n.dataset.ln = e.ln; d.appendChild(n); }
+    });
+    out.push(d);
+  });
+  return out;
+}
+
+function renderZpl(src) {
+  drawGutter(0);
+  desk.classList.remove('stale');
+  repxActive = false; repxW = 0;
+  const warns = [];
+  lastMissing = [];
+  let res;
+  try { res = zplRun(src, data); } catch (err) { status(false, 'Could not draw this ZPL: ' + err.message); return; }
+  /* add sample values for any <#field> that the sample data does not have yet */
+  const add = res.keys.filter(k => data[k] == null);
+  if (add.length && autoFill) {
+    add.forEach(k => { data[k] = ZPL_DEFAULTS(k); });
+    jt.value = JSON.stringify(data, null, 2);
+    jstat.className = 'st ok'; jstat.textContent = '● Valid JSON';
+    res = zplRun(src, data);
+  }
+  res.warns.forEach(w => warns.push(w));
+  const doms = zplDom(res, { dpi: zdpi, warn: w => warns.push(w) });
+  if (!doms.length) desk.replaceChildren(el('div', 'empty', 'This ZPL has no printable fields yet.'));
+  else desk.replaceChildren(...doms);
+  applySel();
+  hasRender = true;
+  $('prevpane').classList.remove('isrepx');
+  $('repxinfo').hidden = true;
+  repxHide();
+  lastKind = 'other';
+  lastImages = [];
+  res.keys.filter(k => data[k] == null).forEach(k => warns.push('Missing value: <#' + k + '>'));
+  showWarns(warns);
+  const l = res.labels[0];
+  const mm = l ? ' · ' + Math.round((l.pw || 0) * 25.4 / zdpi * 10) / 10 + ' × ' + Math.round((l.ll || 0) * 25.4 / zdpi * 10) / 10 + ' mm at ' + zdpi + ' dpi' : '';
+  const n = new Set(warns).size;
+  status(true, 'ZPL · Zebra label' + mm + (res.keys.length ? ' · ' + res.keys.length + ' field(s) filled from Sample data' : '') + (n ? ' · ' + n + ' note(s) below the preview' : ''));
+}
+
+const ZPL_SAMPLE = [
+  '^XA',
+  '^PW508',
+  '^LL305',
+  '^FT184,3^A0N,39,38^FDKP MART^FS',
+  '^FT31,65^A0N,37,23^FD<#itemname>^FS',
+  '^BY1,2,81^FT31,193^BCN,,Y,N',
+  '^FD>;<#barcode#zebra>^FS',
+  '^FT266,120^A0N,45,46^FDAED^FS',
+  '^FT300,201^A0N,100,66^FD<#priceaftertax>^FS',
+  '^PQ1,0,1,Y',
+  '^XZ',
+  ''
+].join('\n');
+SAMPLES.zpl = () => ZPL_SAMPLE;
+
 /* ---------- App ---------- */
 const ta = $('xml'), gut = $('gut'), jt = $('json'), desk = $('desk'), statusEl = $('status'), jstat = $('jstatus'), warnEl = $('warns');
 const zoomEl = $('zoom'), zoomV = $('zoomv'), cmm = $('cmm');
@@ -1856,6 +2110,9 @@ function render() {
   const src = ta.value;
   desk.style.setProperty('--dens', dens / 100);
   if (!src.trim()) { drawGutter(0); status(false, 'Paste or open some XML to see the printout.'); return; }
+  const zpl = isZplSrc(src);
+  $('zdw').hidden = !zpl;
+  if (zpl) { renderZpl(src); return; }
   if (isPrnSrc(src)) { renderPrn(src); return; }
   const doc = new DOMParser().parseFromString(src, 'application/xml');
   const pe = doc.getElementsByTagName('parsererror')[0];
@@ -2410,8 +2667,12 @@ $('file').addEventListener('change', e => {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   const rd = new FileReader();
-  if (/\.(prn|bin|esc)$/i.test(f.name)) {
-    rd.onload = () => setText(prnToText(new Uint8Array(rd.result)));
+  if (/\.(prn|bin|esc|zpl)$/i.test(f.name)) {
+    rd.onload = () => {
+      const u = new Uint8Array(rd.result);
+      const head = new TextDecoder('latin1').decode(u);
+      setText(/\^XA/i.test(head) ? new TextDecoder('utf-8').decode(u) : prnToText(u));
+    };
     rd.readAsArrayBuffer(f);
   } else {
     rd.onload = () => setText(String(rd.result));
@@ -2443,7 +2704,8 @@ const save = (name, text, type) => {
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
 };
 if (location.protocol === 'file:') document.querySelectorAll('.local').forEach(b => { b.hidden = false; });
-$('dlxml').addEventListener('click', () => { if (isPrnSrc(ta.value)) save('receipt.prn', prnToBytes(ta.value), 'application/octet-stream'); else save('receipt-template.xml', ta.value, 'application/xml'); });
+$('zdpi').addEventListener('change', e => { zdpi = +e.target.value || 203; render(); update(); });
+$('dlxml').addEventListener('click', () => { if (isZplSrc(ta.value)) save('label.zpl', ta.value, 'text/plain'); else if (isPrnSrc(ta.value)) save('receipt.prn', prnToBytes(ta.value), 'application/octet-stream'); else save('receipt-template.xml', ta.value, 'application/xml'); });
 $('dljson').addEventListener('click', () => save('sample-data.json', jt.value, 'application/json'));
 $('prn').addEventListener('click', () => window.print());
 
