@@ -1876,7 +1876,7 @@ function zplRun(src, dat) {
           else {
             if (b.as) warns.push('Barcode ^' + b.as + ' is drawn in CODE128 style, so the bars differ from the real one.');
             if (b.o !== 'N') warns.push('Rotated barcodes are drawn upright in the preview.');
-            L.els.push({ k: 'bar', x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, '').replace(/^>[0-9A-Za-z]/, ''), bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
+            L.els.push({ k: 'bar', x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, ''), set: (/^>([;:9])/.exec(txt) || [])[1], bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
           }
         } else {
           const f = font || cfont;
@@ -1936,7 +1936,11 @@ function zplDom(res, o) {
         if (window.JsBarcode && e.text) {
           try {
             const svg = document.createElementNS(SVGNS, 'svg');
-            JsBarcode(svg, e.text, { format: 'CODE128', width: Math.max(1, Math.round(e.bw)), height: h, displayValue: false, margin: 0, background: 'transparent', lineColor: 'currentColor' });
+            let fmt = 'CODE128', val = e.text;
+            if (e.set === ';' && /^\d+$/.test(val)) { fmt = 'CODE128C'; if (val.length % 2) val = '0' + val; }
+            else if (e.set === ':') fmt = 'CODE128B';
+            else if (e.set === '9') fmt = 'CODE128A';
+            JsBarcode(svg, val, { format: fmt, width: Math.max(1, Math.round(e.bw)), height: h, displayValue: false, margin: 0, background: 'transparent', lineColor: 'currentColor' });
             const w = svg.getAttribute('width'), hh = svg.getAttribute('height');
             svg.setAttribute('viewBox', '0 0 ' + w + ' ' + hh); svg.removeAttribute('width'); svg.removeAttribute('height');
             svg.style.width = Z(parseFloat(w)); svg.style.height = Z(parseFloat(hh)); svg.style.display = 'block';
@@ -1944,7 +1948,7 @@ function zplDom(res, o) {
           } catch (err) { o.warn('Barcode "' + e.text + '" is not valid CODE128 text.'); }
         } else if (e.text) o.warn('Barcode library could not load, so a placeholder barcode is shown.');
         if (!ok) {
-          const est = Math.round((e.text.length * 11 * (/^\d+$/.test(e.text) ? 0.5 : 1) + 35) * e.bw);
+          const num = e.set === ';' && /^\d+$/.test(e.text), est = Math.round(((num ? Math.ceil(e.text.length / 2) : e.text.length) * 11 + 35) * e.bw);
           const ph = el('div', 'zbph'); ph.style.width = Z(est); ph.style.height = Z(h); n.appendChild(ph);
         }
         if (e.hri) {
