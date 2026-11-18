@@ -217,6 +217,8 @@ body{
 .sbg input[type=checkbox]{justify-self:start;width:18px;height:18px}
 .sbg input:focus-visible,.sbg select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .sbg input:disabled{opacity:.5}
+
+.pos .imgrow.tight{margin:0}
 </style>
 <div class="app">
   <header class="bar">
@@ -226,13 +228,14 @@ body{
         <option value="">Load sample…</option>
         <option value="pos">Your POS Commands XML + data</option>
         <option value="repx">DevExpress REPX report + data</option>
+        <option value="prn">Raw printer file (.prn, ESC/POS)</option>
         <option value="grv">Your GRV Purchase Invoice (A4 .repx)</option>
         <option value="bill">Simple bill XML</option>
         <option value="epos">Receipt (ePOS-Print XML)</option>
         <option value="other">Unknown XML layout</option>
       </select>
       <button type="button" class="btn" id="open">Open XML file</button>
-      <input type="file" id="file" accept=".xml,.repx,text/xml,application/xml" hidden>
+      <input type="file" id="file" accept=".xml,.repx,.prn,.bin,.txt,text/xml,application/xml" hidden>
       <button type="button" class="btn" id="logobtn">Upload images</button>
       <input type="file" id="logo" accept="image/*" multiple hidden>
       <button type="button" class="btn" id="copy">Copy XML</button>
@@ -241,7 +244,7 @@ body{
       <button type="button" class="btn local" id="prn" hidden>Print</button>
     </div>
   </header>
-  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
+  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
   <main class="split" id="split">
     <section class="pane" aria-label="Editor">
       <div class="ph">
@@ -829,6 +832,9 @@ function posDom(res, o) {
         const sp = el('span', '', g.t);
         if (g.ln) sp.dataset.ln = g.ln;
         sp.style.left = 'calc(' + g.x + ' * var(--dot))';
+        if (g.b) sp.style.fontWeight = '700';
+        if (g.u) sp.style.textDecoration = 'underline';
+        if (g.v) { sp.style.background = 'var(--ink)'; sp.style.color = 'var(--paper)'; }
         sp.style.fontSize = 'calc(' + (g.cw / 0.6) + ' * var(--dot))';
         sp.style.lineHeight = 'calc(' + g.ch + ' * var(--dot))';
         if (g.X !== 1 || g.Y !== 1) sp.style.transform = 'scale(' + g.X + ',' + g.Y + ')';
@@ -837,6 +843,25 @@ function posDom(res, o) {
       s.appendChild(d);
     } else if (b.type === 'cut') {
       if (o.cut) { const cl = el('div', 'cutline', 'cut here'); if (b.ln) cl.dataset.ln = b.ln; s.appendChild(cl); }
+    } else if (b.type === 'qr') {
+      const row = el('div', 'imgrow');
+      if (b.ln) row.dataset.ln = b.ln;
+      row.style.justifyContent = b.al === 'c' ? 'center' : b.al === 'r' ? 'flex-end' : 'flex-start';
+      const bx = el('div', 'imgbox', 'QR code\n' + (b.value || ''));
+      bx.style.width = bx.style.height = 'calc(' + Math.min(b.size, o.pdots) + ' * var(--dot))';
+      bx.style.whiteSpace = 'pre-wrap'; bx.style.overflow = 'hidden';
+      row.appendChild(bx);
+      s.appendChild(row);
+    } else if (b.type === 'img' && b.url) {
+      const row = el('div', 'imgrow' + (b.tight ? ' tight' : ''));
+      if (b.ln) row.dataset.ln = b.ln;
+      row.style.justifyContent = b.al === 'c' ? 'center' : b.al === 'r' ? 'flex-end' : 'flex-start';
+      const im = el('img');
+      im.src = b.url; im.alt = 'printer bitmap';
+      im.style.width = 'calc(' + Math.min(b.w, o.pdots) + ' * var(--dot))';
+      im.style.height = 'auto'; im.style.imageRendering = 'pixelated';
+      row.appendChild(im);
+      s.appendChild(row);
     } else if (b.type === 'img') {
       const row = el('div', 'imgrow');
       if (b.ln) row.dataset.ln = b.ln;
@@ -1478,6 +1503,282 @@ const GRV_XML = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<XtraReportsLayoutS
 const GRV_DATA = "{\n  \"H_CompName\": \"K MARKET LLC\",\n  \"H_CompAddress\": \"Shop No. 12, Al Nahda Street\\nP.O. Box 12345, Sharjah, U.A.E\\nTel: 06 555 1234\",\n  \"H_TranNo\": \"GRV-000123\",\n  \"H_Date\": \"13-Nov-2026\",\n  \"H_Cash_Credit\": \"Credit\",\n  \"H_InvoiceNo\": \"INV-77841\",\n  \"H_Supplier\": \"Al Safa Trading Co. LLC\",\n  \"H_PurchseAc\": \"Purchase A/c\",\n  \"F_AddExpence\": \"0.00\",\n  \"F_Disc\": \"12.50\",\n  \"F_Net\": \"1,262.25\",\n  \"F_Notes\": \"Received in good condition\",\n  \"F_Gross\": \"1,250.00\",\n  \"TotalDisc\": \"12.50\",\n  \"S_Address\": \"Warehouse 4, Industrial Area 3, Sharjah, U.A.E\",\n  \"S_Phone1\": \"+971 6 534 8899\",\n  \"S_Phone2\": \"+971 50 123 4567\",\n  \"CurrSymbolLC\": \"AED\",\n  \"CurrSymbolFC\": \"AED\",\n  \"Footer_Words\": \"UAE Dirhams One Thousand Two Hundred Sixty Two and Twenty Five Fils Only\",\n  \"CurrLocation\": \"Sharjah\",\n  \"TaxLC\": \"62.75\",\n  \"TaxFC\": \"62.75\",\n  \"TIN\": \"100234567800003\",\n  \"AccTIN\": \"100987654300003\",\n  \"GPPer\": \"0\",\n  \"GPAmt\": \"0\",\n  \"ExciseTotal\": \"0\",\n  \"H_Logo\": \"\",\n  \"Rows\": [\n    {\n      \"SlNo\": 1,\n      \"ItemCode\": \"1001\",\n      \"ItemName\": \"Basmati Rice 5kg\",\n      \"CF\": \"1\",\n      \"Unit\": \"Bag\",\n      \"Qty\": 10,\n      \"FOC\": 0,\n      \"Rate\": 32.5,\n      \"Disc\": 0,\n      \"Total\": \"325.00\",\n      \"Tax\": \"16.25\",\n      \"TotalAfterTax\": \"341.25\",\n      \"BalanceAmount\": \"341.25\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 2,\n      \"ItemCode\": \"1002\",\n      \"ItemName\": \"Sunflower Oil 1.8L\",\n      \"CF\": \"1\",\n      \"Unit\": \"Btl\",\n      \"Qty\": 24,\n      \"FOC\": 2,\n      \"Rate\": 14.75,\n      \"Disc\": 1.5,\n      \"Total\": \"352.50\",\n      \"Tax\": \"17.62\",\n      \"TotalAfterTax\": \"370.12\",\n      \"BalanceAmount\": \"370.12\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 3,\n      \"ItemCode\": \"1003\",\n      \"ItemName\": \"Fresh Milk Full Cream 1L\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pcs\",\n      \"Qty\": 60,\n      \"FOC\": 0,\n      \"Rate\": 5.2,\n      \"Disc\": 0,\n      \"Total\": \"312.00\",\n      \"Tax\": \"0.00\",\n      \"TotalAfterTax\": \"312.00\",\n      \"BalanceAmount\": \"312.00\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 4,\n      \"ItemCode\": \"1004\",\n      \"ItemName\": \"Tea Powder Red Label 500g\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pkt\",\n      \"Qty\": 12,\n      \"FOC\": 0,\n      \"Rate\": 17.9,\n      \"Disc\": 0,\n      \"Total\": \"214.80\",\n      \"Tax\": \"10.74\",\n      \"TotalAfterTax\": \"225.54\",\n      \"BalanceAmount\": \"225.54\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    },\n    {\n      \"SlNo\": 5,\n      \"ItemCode\": \"1005\",\n      \"ItemName\": \"Sugar 2kg\",\n      \"CF\": \"1\",\n      \"Unit\": \"Pkt\",\n      \"Qty\": 20,\n      \"FOC\": 0,\n      \"Rate\": 7.35,\n      \"Disc\": 0,\n      \"Total\": \"147.00\",\n      \"Tax\": \"7.35\",\n      \"TotalAfterTax\": \"154.35\",\n      \"BalanceAmount\": \"154.35\",\n      \"TenderAmount\": \"0.00\",\n      \"Company\": \"K MARKET LLC\"\n    }\n  ]\n}";
 SAMPLES.grv = () => GRV_XML;
 
+/* ---------- PRN: raw printer data (ESC/POS) and plain-text print files ----------
+   Editor text format: printable characters as they are, control bytes as {ESC} {GS} {LF} {0x1B} ...,
+   raster images as {RASTER m w h base64} and {BITIMG m n base64}. A real line break after {LF} is only for reading. */
+const PRN_NAMES = { NUL: 0, SOH: 1, STX: 2, ETX: 3, EOT: 4, ENQ: 5, BEL: 7, HT: 9, LF: 10, VT: 11, FF: 12, CR: 13, DLE: 16, DC4: 20, CAN: 24, ESC: 27, FS: 28, GS: 29, RS: 30, US: 31 };
+const PRN_BY = {};
+Object.keys(PRN_NAMES).forEach(k => { PRN_BY[PRN_NAMES[k]] = k; });
+const isPrnSrc = s => !/^\s*</.test(s);
+const hex2 = n => (n < 16 ? '0' : '') + n.toString(16).toUpperCase();
+function b64enc(u8) {
+  let s = '';
+  for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+  return btoa(s);
+}
+function b64dec(t) {
+  try { const s = atob(t.replace(/\s+/g, '')), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; } catch (e) { return new Uint8Array(0); }
+}
+
+function prnToText(u8) {
+  let out = '', i = 0;
+  const n = u8.length;
+  while (i < n) {
+    const b = u8[i];
+    if (b === 0x1D && u8[i + 1] === 0x76 && u8[i + 2] === 0x30 && i + 7 < n) {
+      const m = u8[i + 3], w = u8[i + 4] | (u8[i + 5] << 8), h = u8[i + 6] | (u8[i + 7] << 8), len = w * h;
+      if (len < 4e6 && i + 8 + len <= n) { out += '{RASTER ' + m + ' ' + w + ' ' + h + ' ' + b64enc(u8.subarray(i + 8, i + 8 + len)) + '}\n'; i += 8 + len; continue; }
+    }
+    if (b === 0x1B && u8[i + 1] === 0x2A && i + 4 < n) {
+      const m = u8[i + 2], nn = u8[i + 3] | (u8[i + 4] << 8), len = nn * (m === 32 || m === 33 ? 3 : 1);
+      if (len < 4e6 && i + 5 + len <= n) { out += '{BITIMG ' + m + ' ' + nn + ' ' + b64enc(u8.subarray(i + 5, i + 5 + len)) + '}'; i += 5 + len; continue; }
+    }
+    if (b === 10) { out += '{LF}\n'; i++; continue; }
+    if (PRN_BY[b] !== undefined) { out += '{' + PRN_BY[b] + '}'; i++; continue; }
+    if (b >= 0x20 && b < 0x7F && b !== 0x7B) { out += String.fromCharCode(b); i++; continue; }
+    if (b >= 0xC2) {
+      const L = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : 2;
+      let ok = i + L <= n;
+      for (let k = 1; ok && k < L; k++) if ((u8[i + k] & 0xC0) !== 0x80) ok = false;
+      if (ok) {
+        let cp = L === 2 ? b & 0x1F : L === 3 ? b & 0x0F : b & 0x07;
+        for (let k = 1; k < L; k++) cp = (cp << 6) | (u8[i + k] & 0x3F);
+        out += String.fromCodePoint(cp); i += L; continue;
+      }
+    }
+    out += '{0x' + hex2(b) + '}'; i++;
+  }
+  return out;
+}
+
+/* text -> token list: {v: code, s: char, raw: true for {0xNN}, img: {...}, ln: source line} */
+function prnTokens(src) {
+  const T = [], re = /\{(?:0[xX]([0-9A-Fa-f]{1,2})|([A-Za-z]+)((?: [^}]*)?))\}/y;
+  let ln = 1, i = 0, afterLF = false;
+  while (i < src.length) {
+    const ch = src[i];
+    if (ch === '\r') { i++; continue; }
+    if (ch === '\n') { if (!afterLF) T.push({ v: 10, ln }); afterLF = false; ln++; i++; continue; }
+    afterLF = false;
+    if (ch === '{') {
+      re.lastIndex = i;
+      const m = re.exec(src);
+      if (m) {
+        if (m[1] !== undefined) {
+          const v = parseInt(m[1], 16);
+          T.push(v >= 0x20 && v !== 0x7F ? { v, s: String.fromCharCode(v), raw: true, ln } : { v, raw: true, ln });
+          i += m[0].length; continue;
+        }
+        const nm = m[2].toUpperCase();
+        if (PRN_NAMES[nm] !== undefined && !m[3]) { T.push({ v: PRN_NAMES[nm], ln }); if (nm === 'LF') afterLF = true; i += m[0].length; continue; }
+        if ((nm === 'RASTER' || nm === 'BITIMG') && m[3]) {
+          const a = m[3].trim().split(/\s+/);
+          const img = nm === 'RASTER' ? { k: 'r', m: +a[0] || 0, w: +a[1] || 0, h: +a[2] || 0, d: b64dec(a[3] || '') } : { k: 'b', m: +a[0] || 0, n: +a[1] || 0, d: b64dec(a[2] || '') };
+          T.push({ img, ln }); i += m[0].length; ln += (m[0].match(/\n/g) || []).length; afterLF = nm === 'RASTER'; continue;
+        }
+      }
+    }
+    const cp = src.codePointAt(i), s = String.fromCodePoint(cp);
+    T.push({ v: cp, s, ln }); i += s.length;
+  }
+  return T;
+}
+
+function prnToBytes(src) {
+  const out = [];
+  const enc = new TextEncoder();
+  prnTokens(src).forEach(t => {
+    if (t.img) {
+      const g = t.img;
+      if (g.k === 'r') out.push(0x1D, 0x76, 0x30, g.m, g.w & 255, g.w >> 8, g.h & 255, g.h >> 8, ...g.d);
+      else out.push(0x1B, 0x2A, g.m, g.n & 255, g.n >> 8, ...g.d);
+    } else if (t.raw || !t.s) out.push(t.v);
+    else enc.encode(t.s).forEach(x => out.push(x));
+  });
+  return new Uint8Array(out);
+}
+
+function prnCanvasURL(w, h, paint) {
+  const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h);
+  const g = c.getContext('2d'), im = g.createImageData(c.width, c.height);
+  paint((x, y) => { if (x < 0 || y < 0 || x >= c.width || y >= c.height) return; const o = (y * c.width + x) * 4; im.data[o] = im.data[o + 1] = im.data[o + 2] = 20; im.data[o + 3] = 255; });
+  g.putImageData(im, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+function prnRun(src, pdots) {
+  const T = prnTokens(src), blocks = [], warns = [], images = [], unk = new Set();
+  let st, cur, esc = false, skipLF = false, qr = { data: '', size: 3 }, bc = { h: 162, w: 3, hri: 0 }, i = 0, curLn = 1;
+  const reset = () => { st = { al: 0, b: 0, u: 0, v: 0, X: 1, Y: 1, font: 0, ls: null, lm: 0, aw: null }; };
+  const newLine = () => ({ segs: [], x: 0, h: 0, ln: 0 });
+  const cell = () => (st.font ? { w: 9, h: 17 } : { w: 12, h: 24 });
+  const area = () => Math.max(24, (st.aw != null && st.aw > 0 ? Math.min(st.aw, pdots - st.lm) : pdots - st.lm));
+  const pitch = h => (st.ls == null ? h + 6 : Math.max(h, st.ls));
+  reset(); cur = newLine();
+
+  const flush = () => {
+    const L = cur; cur = newLine();
+    if (!L.segs.length) { blocks.push({ type: 'blank', h: pitch(cell().h), ln: curLn }); return; }
+    const w = L.x, a = area();
+    const off = st.lm + (st.al === 1 ? Math.max(0, (a - w) / 2) : st.al === 2 ? Math.max(0, a - w) : 0);
+    blocks.push({ type: 'line', h: pitch(L.h), ln: L.ln, segs: L.segs.map(s => ({ ...s, x: s.x + off })) });
+  };
+  const pending = () => { if (cur.segs.length) flush(); };
+  const put = (ch, ln) => {
+    const c = cell(), cw = c.w * st.X;
+    if (cur.x + cw > area() && cur.x > 0) { curLn = ln; flush(); }
+    if (!cur.ln) cur.ln = ln;
+    const last = cur.segs[cur.segs.length - 1];
+    const key = [st.font, st.b, st.u, st.v, st.X, st.Y].join();
+    if (last && last.key === key && Math.abs(last.x + last.t.length * cw - cur.x) < 0.01) last.t += ch;
+    else cur.segs.push({ x: cur.x, t: ch, cw: c.w, ch: c.h, X: st.X, Y: st.Y, ln, b: st.b, u: st.u, v: st.v, key });
+    cur.x += cw; cur.h = Math.max(cur.h, c.h * st.Y);
+  };
+  const rd = () => { const t = T[i++]; return t && t.v !== undefined ? t.v : 0; };
+  const take = n => { const a = []; for (let k = 0; k < n && i < T.length; k++) a.push(rd()); return a; };
+  const alStr = () => (st.al === 1 ? 'c' : st.al === 2 ? 'r' : 'l');
+  const note = k => { if (!unk.has(k)) { unk.add(k); warns.push('Command ' + k + ' is not drawn in the preview (it was skipped).'); } };
+
+  const bitImage = (m, n, d, ln) => {
+    const rows = m === 32 || m === 33 ? 24 : 8, bpc = rows / 8;
+    const url = prnCanvasURL(n, rows, set => { for (let x = 0; x < n; x++) for (let r = 0; r < rows; r++) if ((d[x * bpc + (r >> 3)] || 0) & (0x80 >> (r & 7))) set(x, r); });
+    pending();
+    blocks.push({ type: 'img', url, w: n, h: rows, al: alStr(), ln, tight: true });
+    skipLF = true;
+  };
+  const raster = (m, w, h, d, ln) => {
+    const sx = m & 1 ? 2 : 1, sy = m & 2 ? 2 : 1, W = w * 8;
+    const url = prnCanvasURL(W, h, set => { for (let y = 0; y < h; y++) for (let x = 0; x < W; x++) if ((d[y * w + (x >> 3)] || 0) & (0x80 >> (x & 7))) set(x, y); });
+    pending();
+    blocks.push({ type: 'img', url, w: W * sx, h: h * sy, al: alStr(), ln });
+  };
+
+  while (i < T.length) {
+    const t = T[i++];
+    curLn = t.ln;
+    if (t.img) {
+      const g = t.img;
+      if (g.k === 'r') raster(g.m, g.w, g.h, g.d, t.ln); else bitImage(g.m, g.n, g.d, t.ln);
+      continue;
+    }
+    if (t.s) { skipLF = false; put(t.s, t.ln); continue; }
+    switch (t.v) {
+      case 10:
+        if (skipLF && !cur.segs.length) { skipLF = false; break; }
+        skipLF = false; flush(); break;
+      case 9: { const cw = cell().w * st.X, col = Math.floor(cur.x / cw + 1e-6), sp = 8 - (col % 8); for (let k = 0; k < sp; k++) put(' ', t.ln); break; }
+      case 12: pending(); blocks.push({ type: 'cut', ln: t.ln }); break;
+      case 16: rd(); rd(); break; /* DLE EOT n etc. */
+      case 28: { /* FS */
+        const c = rd();
+        if (c === 0x70) { const n = rd(); rd(); pending(); const nm = 'NV logo ' + n; if (!images.includes(nm)) images.push(nm); esc = true; blocks.push({ type: 'img', def: { type: 'image', name: nm }, al: alStr(), ln: t.ln }); }
+        else if ([0x21, 0x2D, 0x43, 0x57].includes(c)) rd();
+        else if (c !== 0x26 && c !== 0x2E) note('FS ' + String.fromCharCode(c || 63));
+        break;
+      }
+      case 29: { /* GS */
+        esc = true;
+        const c = rd();
+        switch (c) {
+          case 0x21: { const n = rd(); st.X = ((n >> 4) & 7) + 1; st.Y = (n & 7) + 1; break; }
+          case 0x42: st.v = rd() & 1; break;
+          case 0x4C: st.lm = rd() | (rd() << 8); break;
+          case 0x57: st.aw = rd() | (rd() << 8); break;
+          case 0x56: { const m = rd(); if (m === 65 || m === 66) rd(); pending(); blocks.push({ type: 'cut', ln: t.ln }); break; }
+          case 0x68: bc.h = rd() || 162; break;
+          case 0x77: bc.w = Math.min(6, Math.max(2, rd() || 3)); break;
+          case 0x48: bc.hri = rd() & 3; break;
+          case 0x66: case 0x61: case 0x72: case 0x2F: case 0x44: rd(); break;
+          case 0x50: rd(); rd(); break;
+          case 0x6B: {
+            const m = rd(); let s = '';
+            if (m <= 6) { for (; i < T.length; ) { const v = rd(); if (v === 0) break; s += String.fromCharCode(v); } }
+            else { const n = rd(); take(n).forEach(v => { s += String.fromCharCode(v); }); }
+            const type = m >= 65 ? m - 65 : m;
+            let val = s;
+            if (m === 73) val = s.replace(/^\{[ABC]/, '');
+            const names = ['UPC-A', 'UPC-E', 'EAN13', 'EAN8', 'CODE39', 'ITF', 'CODABAR'];
+            if (m !== 73) warns.push('Barcode type ' + (names[type] || m) + ' is drawn in CODE128 style, so the bars differ from the real one.');
+            pending();
+            blocks.push({ type: 'img', def: { type: 'barcode', value: val, w: (val.length * 11 + 35) * bc.w, h: bc.h, lsize: 20, label: !!bc.hri }, al: alStr(), ln: t.ln });
+            break;
+          }
+          case 0x76: {
+            const m0 = rd(), m = rd(), w = rd() | (rd() << 8), h = rd() | (rd() << 8);
+            if (m0 === 0x30 && w * h < 4e6) raster(m, w, h, Uint8Array.from(take(w * h)), t.ln);
+            break;
+          }
+          case 0x28: {
+            const c2 = rd(), len = rd() | (rd() << 8), p = take(len);
+            if (c2 === 0x6B && p[0] === 49) {
+              if (p[1] === 80) qr.data = p.slice(3).map(v => String.fromCharCode(v)).join('');
+              else if (p[1] === 67) qr.size = p[2] || 3;
+              else if (p[1] === 81) { pending(); blocks.push({ type: 'qr', value: qr.data, size: Math.max(120, qr.size * 33), al: alStr(), ln: t.ln }); warns.push('QR codes are shown as a placeholder box.'); }
+            } else if (c2 !== 0x6B && c2 !== 0x4C && c2 !== 0x45 && c2 !== 0x41) note('GS ( ' + String.fromCharCode(c2 || 63));
+            break;
+          }
+          case 0x2A: { const x = rd(), y = rd(); take(x * y * 8); break; }
+          default: note('GS ' + (c >= 0x20 ? String.fromCharCode(c) : '0x' + hex2(c)));
+        }
+        break;
+      }
+      case 27: { /* ESC */
+        esc = true;
+        const c = rd();
+        switch (c) {
+          case 0x40: pending(); reset(); break;
+          case 0x21: { const n = rd(); st.font = n & 1; st.b = (n >> 3) & 1; st.Y = n & 16 ? 2 : 1; st.X = n & 32 ? 2 : 1; st.u = n & 128 ? 1 : 0; break; }
+          case 0x24: { const p = rd() | (rd() << 8); cur.x = Math.max(cur.x, Math.min(p, area() - 1)); break; }
+          case 0x2D: st.u = (rd() & 3) ? 1 : 0; break;
+          case 0x32: st.ls = null; break;
+          case 0x33: st.ls = rd(); break;
+          case 0x45: case 0x47: st.b = rd() & 1; break;
+          case 0x4D: st.font = rd() & 1; break;
+          case 0x61: st.al = rd() & 3; break;
+          case 0x4A: { pending(); blocks.push({ type: 'blank', h: rd(), ln: t.ln }); break; }
+          case 0x64: case 0x65: { pending(); const n = rd(); if (n) blocks.push({ type: 'blank', h: n * pitch(cell().h), ln: t.ln }); break; }
+          case 0x69: case 0x6D: pending(); blocks.push({ type: 'cut', ln: t.ln }); break;
+          case 0x2A: { const m = rd(), n = rd() | (rd() << 8); bitImage(m, n, Uint8Array.from(take(n * (m === 32 || m === 33 ? 3 : 1))), t.ln); break; }
+          case 0x70: take(3); warns.push('Cash drawer pulse command found (nothing to draw).'); break;
+          case 0x74: case 0x52: case 0x3D: case 0x3F: case 0x75: case 0x76: case 0x72: case 0x56: case 0x7B: case 0x20: case 0x25: case 0x54: case 0x55: case 0x63: case 0x5C: rd(); if (c === 0x5C || c === 0x63) rd(); break;
+          case 0x57: take(8); break;
+          case 0x44: for (; i < T.length; ) if (rd() === 0) break; break;
+          case 0x26: { const y = rd(), c1 = rd(), c2 = rd(); take((c2 - c1 + 1) * y * 12); note('ESC & (user-defined characters)'); break; }
+          case 0x53: case 0x4C: break;
+          default: note('ESC ' + (c >= 0x20 && c < 0x7F ? String.fromCharCode(c) : '0x' + hex2(c)));
+        }
+        break;
+      }
+      default: break;
+    }
+  }
+  pending();
+  return { blocks, warns, missing: [], images, esc };
+}
+
+const PRN_SAMPLE = [
+  '{ESC}@{ESC}a{0x01}{ESC}E{0x01}{GS}!{0x11}K MARKET{LF}',
+  '{GS}!{0x00}{ESC}E{0x00}Shop 12, Al Nahda Street, Sharjah{LF}',
+  'Tel: 06 555 1234   TRN 100234567800003{LF}',
+  '{ESC}a{0x00}------------------------------------------------{LF}',
+  'Bill No: 10458          Date: 13-11-2026 18:42{LF}',
+  '------------------------------------------------{LF}',
+  '{ESC}E{0x01}Item                     Qty     Rate    Amount{LF}',
+  '{ESC}E{0x00}Basmati Rice 5kg          2    32.50     65.00{LF}',
+  'Sunflower Oil 1.8L        1    14.75     14.75{LF}',
+  'Fresh Milk 1L             6     5.20     31.20{LF}',
+  'Tea Powder 500g           1    17.90     17.90{LF}',
+  '------------------------------------------------{LF}',
+  '{ESC}E{0x01}{GS}!{0x01}TOTAL              AED 128.85{LF}',
+  '{GS}!{0x00}{ESC}E{0x00}{ESC}a{0x01}Paid by Cash{LF}',
+  '{ESC}d{0x01}',
+  '{GS}h{0x50}{GS}w{0x02}{GS}H{0x02}{GS}k{0x49}{0x0B}{0x7B}BBILL10458{LF}',
+  '{ESC}d{0x01}Thank you, visit again!{LF}',
+  '{ESC}d{0x04}{GS}V{0x42}{0x00}',
+  ''
+].join('\n');
+SAMPLES.prn = () => PRN_SAMPLE;
+
 /* ---------- App ---------- */
 const ta = $('xml'), gut = $('gut'), jt = $('json'), desk = $('desk'), statusEl = $('status'), jstat = $('jstatus'), warnEl = $('warns');
 const zoomEl = $('zoom'), zoomV = $('zoomv'), cmm = $('cmm');
@@ -1555,6 +1856,7 @@ function render() {
   const src = ta.value;
   desk.style.setProperty('--dens', dens / 100);
   if (!src.trim()) { drawGutter(0); status(false, 'Paste or open some XML to see the printout.'); return; }
+  if (isPrnSrc(src)) { renderPrn(src); return; }
   const doc = new DOMParser().parseFromString(src, 'application/xml');
   const pe = doc.getElementsByTagName('parsererror')[0];
   if (pe) {
@@ -1635,6 +1937,32 @@ function render() {
   if (!repxActive && !thermal && !out[0].classList.contains('a4')) msg += ' · A4 needs the <bill> layout, so the receipt is shown at 80 mm';
   if (new Set(warns).size) msg += ' · ' + new Set(warns).size + ' note(s) below the preview';
   status(true, msg);
+}
+
+function renderPrn(src) {
+  drawGutter(0);
+  desk.classList.remove('stale');
+  repxActive = false; repxW = 0;
+  const pm = mode === 'a4' ? 210 : thermalMM(), pad = mode === 'a4' ? 10 : padMM(pm), pdots = Math.floor((pm - 2 * pad) * 8);
+  const warns = [];
+  lastMissing = [];
+  let res;
+  try { res = prnRun(src, pdots); } catch (err) { status(false, 'Could not draw this PRN data: ' + err.message); return; }
+  res.warns.forEach(w => warns.push(w));
+  const changed = res.images.join('|') !== lastImages.join('|');
+  lastImages = res.images;
+  const dom = posDom(res, { paper: pm, pad, pdots, images, cut: cutOn, warn: w => warns.push(w) });
+  desk.replaceChildren(dom);
+  if (changed && tab === 'img') buildImgs();
+  applySel();
+  hasRender = true;
+  $('prevpane').classList.remove('isrepx');
+  $('repxinfo').hidden = true;
+  repxHide();
+  lastKind = 'other';
+  showWarns(warns);
+  const n = new Set(warns).size;
+  status(true, 'PRN · ' + (res.esc ? 'ESC/POS raw printer data' : 'plain text') + ' · ' + res.blocks.length + ' blocks' + (n ? ' · ' + n + ' note(s) below the preview' : ''));
 }
 
 /* ---------- Sample data ---------- */
@@ -2082,8 +2410,13 @@ $('file').addEventListener('change', e => {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
   const rd = new FileReader();
-  rd.onload = () => setText(String(rd.result));
-  rd.readAsText(f);
+  if (/\.(prn|bin|esc)$/i.test(f.name)) {
+    rd.onload = () => setText(prnToText(new Uint8Array(rd.result)));
+    rd.readAsArrayBuffer(f);
+  } else {
+    rd.onload = () => setText(String(rd.result));
+    rd.readAsText(f);
+  }
   e.target.value = '';
 });
 $('logobtn').addEventListener('click', () => $('logo').click());
@@ -2110,7 +2443,7 @@ const save = (name, text, type) => {
   a.download = name; document.body.appendChild(a); a.click(); a.remove();
 };
 if (location.protocol === 'file:') document.querySelectorAll('.local').forEach(b => { b.hidden = false; });
-$('dlxml').addEventListener('click', () => save('receipt-template.xml', ta.value, 'application/xml'));
+$('dlxml').addEventListener('click', () => { if (isPrnSrc(ta.value)) save('receipt.prn', prnToBytes(ta.value), 'application/octet-stream'); else save('receipt-template.xml', ta.value, 'application/xml'); });
 $('dljson').addEventListener('click', () => save('sample-data.json', jt.value, 'application/json'));
 $('prn').addEventListener('click', () => window.print());
 
