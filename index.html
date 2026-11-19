@@ -242,6 +242,9 @@ body.dragging{user-select:none;cursor:grabbing}
 .zadd[hidden]{display:none!important}
 .zadd input{min-width:150px;flex:1 1 150px;max-width:260px}
 .zadd .zhint{flex:1 0 100%;color:var(--muted,#667);font-size:12px}
+
+.zb{width:max-content}
+.zhri{text-align:center}
 </style>
 <div class="app">
   <header class="bar">
@@ -252,6 +255,7 @@ body.dragging{user-select:none;cursor:grabbing}
         <option value="pos">Your POS Commands XML + data</option>
         <option value="repx">DevExpress REPX report + data</option>
         <option value="zpl">Zebra label (ZPL)</option>
+        <option value="lbl">Label printer (TEXT / 1DB)</option>
         <option value="prn">Raw printer file (.prn, ESC/POS)</option>
         <option value="grv">Your GRV Purchase Invoice (A4 .repx)</option>
         <option value="bill">Simple bill XML</option>
@@ -1824,7 +1828,7 @@ const PRN_SAMPLE = [
 SAMPLES.prn = () => PRN_SAMPLE;
 
 /* ---------- ZPL: Zebra label language ---------- */
-const isZplSrc = s => /\^XA/i.test(s) && !/^\s*</.test(s);
+const isZplSrc = s => !/^\s*</.test(s) && (/\^XA/i.test(s) || isLblSrc(s));
 let zdpi = 203;
 const ZPL_DEFAULTS = k => /item.?(no|num|code)|sku|plu/i.test(k) ? '9900746' : /bar|code|ean|upc/i.test(k) ? '5053990161607' : /price|amount|mrp|rate|total/i.test(k) ? '4.00' : /name|desc|item|product/i.test(k) ? 'PRINGLES PAPRIKA 40 GM' : /date/i.test(k) ? '18-11-2026' : /qty|count/i.test(k) ? '1' : 'Sample';
 
@@ -1946,7 +1950,19 @@ function zplDom(res, o) {
     const Z = n => 'calc(' + n + ' * var(--zd))';
     L.els.forEach(e => {
       let n;
-      if (e.k === 'txt') {
+      if (e.k === 'txt' && e.fixed) {
+        n = el('div', 'zt', e.text);
+        const cw = e.fixed.cw * e.mx, ch = e.fixed.ch * e.mx;
+        n.style.fontFamily = 'var(--mono)'; n.style.fontWeight = '700';
+        n.style.fontSize = Z(cw / 0.6); n.style.lineHeight = Z(ch); n.style.whiteSpace = 'pre';
+        let tx = e.my !== e.mx ? 'scaleY(' + (e.my / e.mx) + ')' : '';
+        let left = e.x, top = e.y;
+        if (e.o === 'R') { tx = 'rotate(90deg) ' + tx; left = e.x + e.fixed.ch * e.my; }
+        else if (e.o === 'I') tx = 'rotate(180deg) ' + tx;
+        else if (e.o === 'B') { tx = 'rotate(270deg) ' + tx; top = e.y + cw * e.text.length; }
+        n.style.left = Z(left); n.style.top = Z(top); n.style.transformOrigin = '0 0';
+        if (tx) n.style.transform = tx;
+      } else if (e.k === 'txt') {
         const h = Math.max(6, e.h), isSc = e.f === '0';
         n = el('div', 'zt', e.text);
         const wr = e.w && isSc ? e.w / h : 1;
@@ -2022,7 +2038,7 @@ function zplDom(res, o) {
       if (n) {
         if (e.ln) n.dataset.ln = e.ln;
         n._z = e; n._pw = pw;
-        if (e.spos) n.appendChild(el('div', 'rgrip'));
+        if (e.spos || e.ext) n.appendChild(el('div', 'rgrip'));
         if (e.k === 'stock') d.insertBefore(n, d.firstChild); else d.appendChild(n);
       }
     });
@@ -2038,14 +2054,15 @@ function renderZpl(src) {
   const warns = [];
   lastMissing = [];
   let res;
-  try { res = zplRun(src, data); } catch (err) { status(false, 'Could not draw this ZPL: ' + err.message); return; }
+  const runL = () => (isLblSrc(src) ? lblRun(src, data) : zplRun(src, data));
+  try { res = runL(); } catch (err) { status(false, 'Could not draw this ZPL: ' + err.message); return; }
   /* add sample values for any <#field> that the sample data does not have yet */
   const add = res.keys.filter(k => data[k] == null);
   if (add.length && autoFill) {
     add.forEach(k => { data[k] = ZPL_DEFAULTS(k); });
     jt.value = JSON.stringify(data, null, 2);
     jstat.className = 'st ok'; jstat.textContent = '● Valid JSON';
-    res = zplRun(src, data);
+    res = runL();
   }
   res.warns.forEach(w => warns.push(w));
   const doms = zplDom(res, { dpi: zdpi, warn: w => warns.push(w) });
@@ -2067,7 +2084,7 @@ function renderZpl(src) {
   const l = res.labels[0];
   const mm = l ? ' · ' + Math.round((l.pw || 0) * 25.4 / zdpi * 10) / 10 + ' × ' + Math.round((l.ll || 0) * 25.4 / zdpi * 10) / 10 + ' mm at ' + zdpi + ' dpi' : '';
   const n = new Set(warns).size;
-  status(true, 'ZPL · Zebra label' + mm + (res.keys.length ? ' · ' + res.keys.length + ' field(s) filled from Sample data' : '') + (n ? ' · ' + n + ' note(s) below the preview' : ''));
+  status(true, (res.lang || 'ZPL · Zebra label') + mm + (res.keys.length ? ' · ' + res.keys.length + ' field(s) filled from Sample data' : '') + (n ? ' · ' + n + ' note(s) below the preview' : ''));
 }
 
 const ZPL_SAMPLE = [
@@ -2089,6 +2106,70 @@ const ZPL_SAMPLE = [
   ''
 ].join('\n');
 SAMPLES.zpl = () => ZPL_SAMPLE;
+
+/* ---------- Label printer language: rWCTK / sLABEL / wTEXT / w1DB / wPRINT ---------- */
+const isLblSrc = s => /^[ \t]*[rsw]?LABEL,\s*\d+\s*,\s*\d+/mi.test(s) && /^[ \t]*[rsw]?(TEXT|1DB|PRINT)\b/mi.test(s);
+let extStock = { on: false, x: 215, y: 70, w: 257, h: 176, c: '#ffe600' };
+try { const j = JSON.parse(localStorage.getItem('billxml.stock') || 'null'); if (j && typeof j === 'object') extStock = Object.assign(extStock, j); } catch (e) { /* storage may be unavailable */ }
+const saveStock = () => { try { localStorage.setItem('billxml.stock', JSON.stringify(extStock)); } catch (e) { /* ignore */ } };
+
+function lblSplit(s) {
+  const out = []; let cur = '', st = 0, q = false;
+  for (let i = 0; i <= s.length; i++) {
+    const c = s[i];
+    if (i === s.length || (c === ',' && !q)) { out.push({ t: cur, off: st }); cur = ''; st = i + 1; continue; }
+    if (c === '"') q = !q;
+    cur += c;
+  }
+  return out;
+}
+const lblUnq = t => { t = t.trim(); const m = /^[A-Za-z]?"([\s\S]*)"$/.exec(t); return m ? m[1] : t; };
+
+function lblRun(src, dat) {
+  const warns = [], keys = [], seen = new Set();
+  const PH = /<#([^<>#\r\n][^<>\r\n]*)>/g;
+  src.replace(PH, (m, k) => { if (!keys.includes(k)) keys.push(k); return m; });
+  const fill = t => t.replace(PH, (m, k) => (dat[k] == null ? m : String(dat[k])));
+  const L = { els: [], pw: 472, ll: 276 };
+  let ox = 0, oy = 0, off = 0, ln = 0;
+  const known = ['WCTK', 'BLINE', 'TPHY', 'DENSITY', 'SPEED', 'DIRECTION', 'PRINT', 'LABEL', 'ORIGIN', 'TEXT', '1DB'];
+  src.split('\n').forEach(line => {
+    ln++;
+    const start = off; off += line.length + 1;
+    const raw = line.replace(/\r$/, '');
+    const m = /^(\s*)([a-z]?)([A-Z0-9]+)(?:,(.*))?$/.exec(raw);
+    if (!m) return;
+    const cmd = m[3];
+    const bodyOff = start + m[1].length + m[2].length + cmd.length + 1;
+    const ps = m[4] != null ? lblSplit(m[4]).map(x => ({ t: x.t.trim(), off: bodyOff + x.off })) : [];
+    const nv = (i, d) => { const v = parseFloat(ps[i] && ps[i].t); return isNaN(v) ? d : v; };
+    const posOf = () => (ps.length > 1 ? { off: ps[0].off, len: ps[1].off + (ps[1].t.length) - ps[0].off, sx: nv(0, 0), sy: nv(1, 0), extra: '' } : null);
+    if (cmd === 'LABEL') { L.pw = nv(0, 472); L.ll = nv(1, 276); }
+    else if (cmd === 'ORIGIN') { ox = nv(0, 0); oy = nv(1, 0); }
+    else if (cmd === 'TEXT') {
+      const rot = { 0: 'N', 90: 'R', 180: 'I', 270: 'B' }[nv(2, 0)] || 'N';
+      L.els.push({ k: 'txt', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1] ? ps[ps.length - 1].t : '')), o: rot, fixed: { cw: 8, ch: 16 }, mx: nv(4, 1) || 1, my: nv(5, 1) || 1 });
+    } else if (cmd === '1DB') {
+      const type = (ps[3] && ps[3].t) || 'C128';
+      if (!/^C?128$/i.test(type)) warns.push('Barcode type ' + type + ' is drawn in CODE128 style, so the bars differ from the real one.');
+      const hr = (ps[8] && ps[8].t) || '';
+      L.els.push({ k: 'bar', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1].t)), bw: nv(5, 2) || 2, h: nv(7, 60), hri: /^H[^N]/i.test(hr) || (hr === '' ? false : !/^N/i.test(hr)), above: /^HA|^HT/i.test(hr), bar: true });
+    } else if (!known.includes(cmd) && !seen.has(cmd)) { seen.add(cmd); warns.push('Command ' + cmd + ' is not drawn in the preview (it was skipped).'); }
+  });
+  if (extStock.on) L.els.push({ k: 'stock', ext: true, x: extStock.x, y: extStock.y, w: extStock.w, h: extStock.h, c: extStock.c });
+  return { labels: L.els.length ? [L] : [], warns, keys, lang: 'Label printer (TEXT / 1DB)' };
+}
+const LBL_SAMPLE = [
+  'rWCTK', 'sLABEL,472,276', 'sBLINE,24,0', 'sTPHY,0', 'sDENSITY,8', 'sSPEED,3', 'sDIRECTION,1', 'sORIGIN,0,0',
+  'wTEXT,5,10,0,0,2,2,0,"SHUA AL MADINA AL AWAL "',
+  'w1DB,0,131,0,C128,0,2,2.000,78,HB,AC,F"0",E2,BN,T3,Q10,P4,"<#barcode>"',
+  'wTEXT,1,63,0,0,2,2,0,"<#itemname>"',
+  'wTEXT,310,121,0,0,3,3,0,"AED"',
+  'wTEXT,260,165,0,0,4,4,0,"<#priceaftertax>"',
+  'wTEXT,260,223,0,0,2,2,0,"(Inc VAT)"',
+  '', 'wPRINT,1', 'rWCTK', ''
+].join('\n');
+SAMPLES.lbl = () => LBL_SAMPLE;
 
 /* ---------- App ---------- */
 const ta = $('xml'), gut = $('gut'), jt = $('json'), desk = $('desk'), statusEl = $('status'), jstat = $('jstatus'), warnEl = $('warns');
@@ -2652,7 +2733,7 @@ function dragTarget(ev) {
     const scale = () => { const q = node.getBoundingClientRect(); return g.w > 0 ? q.width / g.w : g.h > 0 ? q.height / g.h : 0; };
     return scale() ? { kind: 'repx', node, e, g, scale, sc: scale(), size: !!grip } : null;
   }
-  const gn = grip ? grip.parentElement : (ev.target.closest && ev.target.closest('.zlabel [data-ln]'));
+  const gn = grip ? grip.parentElement : (ev.target.closest && ev.target.closest('.zlabel > *'));
   if (!gn || !gn._z) return null;
   const lab = gn.closest('.zlabel');
   const scale = () => lab.getBoundingClientRect().width / gn._pw;
@@ -2660,6 +2741,11 @@ function dragTarget(ev) {
 }
 function zplApply(d) {
   const e = d.e, src = ta.value;
+  if (e.ext) {
+    if (d.size) { extStock.w = Math.max(5, Math.round(e.w + d.ux)); extStock.h = Math.max(5, Math.round(e.h + d.uy)); }
+    else { extStock.x = Math.round(e.x + d.ux); extStock.y = Math.round(e.y + d.uy); }
+    saveStock(); render(); return;
+  }
   let rep, off, len;
   if (d.size) {
     const sp = e.spos; if (!sp) return;
@@ -2700,7 +2786,7 @@ window.addEventListener('pointermove', ev => {
     dragTip(ev, 'W ' + rr(Math.max(1, w0 + drag.ux)) + '  H ' + rr(Math.max(1, h0 + drag.uy)));
   } else {
     drag.node.style.translate = dx + 'px ' + dy + 'px';
-    const x0 = zp ? (drag.e.pos ? drag.e.pos.sx : 0) : drag.g.x, y0 = zp ? (drag.e.pos ? drag.e.pos.sy : 0) : drag.g.y;
+    const x0 = zp ? (drag.e.pos ? drag.e.pos.sx : drag.e.x) : drag.g.x, y0 = zp ? (drag.e.pos ? drag.e.pos.sy : drag.e.y) : drag.g.y;
     dragTip(ev, 'X ' + rr(x0 + drag.ux) + '  Y ' + rr(y0 + drag.uy));
   }
 });
@@ -2730,7 +2816,7 @@ document.addEventListener('keydown', ev => {
     repxSelect(selEid); ev.preventDefault(); return;
   }
   const n = desk.querySelector('.zlabel .sel');
-  if (n && n._z && n._z.pos) { zplApply({ e: n._z, size: false, ux: dir[0] * st, uy: dir[1] * st }); ev.preventDefault(); }
+  if (n && n._z && (n._z.pos || n._z.ext)) { zplApply({ e: n._z, size: false, ux: dir[0] * st, uy: dir[1] * st }); ev.preventDefault(); }
 });
 
 /* add a new field to a ZPL label */
@@ -2741,6 +2827,21 @@ function zplAdd() {
   const nm = val.replace(/^<#|>$/g, '').trim();
   if ((type === 'tag' || type === 'bar') && !nm) { status(false, 'Type a tag name first, for example itemno.'); $('zaval').focus(); return; }
   if (type === 'text' && !val) { status(false, 'Type the text to print first.'); $('zaval').focus(); return; }
+  if (isLblSrc(src)) {
+    if (type === 'stock') { extStock.on = !extStock.on; saveStock(); render(); status(true, extStock.on ? 'Stock colour area added. Drag it or use its corner handle. This area is only shown in the preview.' : 'Stock colour area removed.'); return; }
+    if (type === 'box') { status(false, 'Lines and boxes are not available for this label language.'); return; }
+    const ys2 = [...src.matchAll(/^[ \t]*[rsw]?(?:TEXT|1DB),\s*-?[\d.]+\s*,\s*(-?[\d.]+)/gmi)].map(m => +m[1]);
+    const ll2 = +((/LABEL,\s*\d+\s*,\s*(\d+)/i.exec(src) || [])[1]) || 276;
+    const y2 = Math.max(10, Math.min(ll2 - 40, (ys2.length ? Math.max(...ys2) : 0) + 40));
+    const ins2 = type === 'bar' ? 'w1DB,0,' + y2 + ',0,C128,0,2,2.000,78,HB,AC,F"0",E2,BN,T3,Q10,P4,"<#' + nm + '>"'
+      : 'wTEXT,5,' + y2 + ',0,0,2,2,0,"' + (type === 'text' ? val.replace(/"/g, ' ') : '<#' + nm + '>') + '"';
+    const at2 = src.search(/^[ \t]*[rsw]?PRINT\b/mi), i2 = at2 < 0 ? src.length : at2;
+    hist.push(src); if (hist.length > 60) hist.shift();
+    ta.value = src.slice(0, i2) + ins2 + '\n' + src.slice(i2);
+    ta.dispatchEvent(new Event('input')); clearTimeout(timer); render();
+    goLine((src.slice(0, i2).match(/\n/g) || []).length + 1, true); update(); $('zaval').value = '';
+    return;
+  }
   if (type === 'stock' && /\^FXSTOCK/i.test(src)) { status(false, 'This label already has a stock colour area (the ^FXSTOCK line).'); return; }
   const ys = [...src.matchAll(/\^F[OT]\s*-?[\d.]+\s*,\s*(-?[\d.]+)/g)].map(m => +m[1]);
   const ll = +((/\^LL(\d+)/.exec(src) || [])[1]) || 305;
