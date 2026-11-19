@@ -230,6 +230,18 @@ body{
 .zq{border:calc(2*var(--zd)) dashed var(--ink);display:grid;place-items:center;text-align:center;font:calc(14*var(--zd))/1.3 var(--mono);white-space:pre-wrap;overflow:hidden;opacity:.6}
 .zlabel [data-ln]{cursor:pointer}
 .zlabel [data-ln]:hover,.zlabel .sel{background:color-mix(in srgb,var(--accent) 24%,transparent);outline:1px solid var(--accent)}
+
+.rgrip{position:absolute;right:0;bottom:0;width:9px;height:9px;background:var(--accent);border:1px solid #fff;border-radius:2px;cursor:nwse-resize;display:none;z-index:6;box-sizing:border-box}
+.sel>.rgrip{display:block}
+.rc.sel,.zlabel .sel{cursor:move}
+.rc,.zlabel [data-ln]{touch-action:none}
+.zs{box-sizing:border-box}
+.dragtip{position:fixed;z-index:99;background:#222;color:#fff;font:12px/1.2 ui-monospace,monospace;padding:3px 7px;border-radius:4px;pointer-events:none}
+body.dragging{user-select:none;cursor:grabbing}
+.zadd{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(128,128,128,.28);font-size:13px}
+.zadd[hidden]{display:none!important}
+.zadd input{min-width:150px;flex:1 1 150px;max-width:260px}
+.zadd .zhint{flex:1 0 100%;color:var(--muted,#667);font-size:12px}
 </style>
 <div class="app">
   <header class="bar">
@@ -308,6 +320,14 @@ body{
         <label class="ck"><input type="checkbox" id="cut" checked> Cut line</label>
         <label class="cw" id="zdw" hidden>Printer <select id="zdpi"><option value="152">152</option><option value="203" selected>203</option><option value="300">300</option><option value="600">600</option></select> dpi</label>
         <label class="ck"><input type="checkbox" id="auto" checked> Auto-fill missing data</label>
+      </div>
+      <div class="zadd" id="zadd" hidden>
+        <b>Add to label</b>
+        <select id="zatype" aria-label="Field type"><option value="tag">Data tag &lt;#name&gt;</option><option value="text">Fixed text</option><option value="bar">Barcode from tag</option><option value="box">Line / box</option><option value="stock">Stock colour area</option></select>
+        <input id="zaval" placeholder="tag name, e.g. itemno" aria-label="Tag name or text" autocomplete="off">
+        <button id="zaadd" type="button">Add</button>
+        <button id="zundo" type="button">Undo</button>
+        <span class="zhint">Drag any field in the preview to move it. Arrow keys nudge (Shift = 10). Boxes and the colour area have a corner handle to resize.</span>
       </div>
       <div class="desk" id="desk"></div>
       <div class="selbar" id="selbar" hidden></div>
@@ -1357,6 +1377,7 @@ function repxRun(root, data, o) {
     if (typeof v === 'number') v = +v.toFixed(6);
     return repxFormat(v == null ? '' : v, fmt, cx);
   }
+  let inhBC = null;
   function decorate(d, c, font, defBorders) {
     const S = d.style;
     S.fontFamily = '"' + font.fam + '", Arial, "Noto Sans Malayalam", sans-serif';
@@ -1369,7 +1390,7 @@ function repxRun(root, data, o) {
     if (bg) S.background = bg;
     const bd = atr(c, 'Borders') != null ? atr(c, 'Borders') : defBorders;
     const bw = (num(atr(c, 'BorderWidth')) || 1) * 25.4 / 96;
-    const bcol = repxColor(atr(c, 'BorderColor')) || '#000';
+    const bcol = repxColor(atr(c, 'BorderColor')) || inhBC || '#000';
     ['Left', 'Top', 'Right', 'Bottom'].forEach(s => { if (/\ball\b/i.test(bd || '') || new RegExp(s, 'i').test(bd || '')) S['border' + s] = cm(bw) + ' solid ' + bcol; });
     const pd = nums(atr(c, 'Padding') || '2,2,0,0,100'), dpi = pd[4] || 100, pm = i => ((isNaN(pd[i]) ? 0 : pd[i]) / dpi * 25.4);
     S.padding = cm(pm(2)) + ' ' + cm(pm(1)) + ' ' + cm(pm(3)) + ' ' + cm(pm(0));
@@ -1428,6 +1449,7 @@ function repxRun(root, data, o) {
     const d = tag(el('div', 'rc'), c);
     box(d, mm(g.x), mm(g.y), mm(g.w), mm(g.h));
     fillCtl(d, c, t, cx, font, defB, g);
+    if (atr(c, 'LocationFloat') != null && t !== 'XRTableCell') d.appendChild(el('div', 'rgrip'));
     return d;
   }
   function fillCtl(d, c, t, cx, font, defB, g) {
@@ -1464,7 +1486,9 @@ function repxRun(root, data, o) {
       const rows = subItems(c, 'Rows').filter(vis);
       const wsum = rows.reduce((s, r) => s + (num(atr(r, 'Weight')) || 1), 0) || 1;
       const tb = atr(c, 'Borders') != null ? atr(c, 'Borders') : 'All';
-      let yy = 0;
+      const savedBC = inhBC; inhBC = repxColor(atr(c, 'BorderColor')) || inhBC;
+      const bwm = (num(atr(c, 'BorderWidth')) || 1) * 25.4 / 96;
+      let yy = 0, ri = 0;
       rows.forEach(r => {
         const rh = g.h * (num(atr(r, 'Weight')) || 1) / wsum, rfont = atr(r, 'Font') ? repxFont(atr(r, 'Font')) : font;
         const cells = subItems(r, 'Cells').filter(vis);
@@ -1473,13 +1497,15 @@ function repxRun(root, data, o) {
         cells.forEach(k => {
           const kw = g.w * (num(atr(k, 'Weight')) || 1) / csum;
           const cell = tag(el('div', 'rc'), k);
-          box(cell, mm(xx), mm(yy), mm(kw), mm(rh));
+          const ox = xx > 0 ? bwm : 0, oy = ri > 0 ? bwm : 0;
+          box(cell, mm(xx) - ox, mm(yy) - oy, mm(kw) + ox, mm(rh) + oy);
           fillCtl(cell, k, 'XRTableCell', cx, atr(k, 'Font') ? repxFont(atr(k, 'Font')) : rfont, tb);
           d.appendChild(cell);
           xx += kw;
         });
-        yy += rh;
+        yy += rh; ri++;
       });
+      inhBC = savedBC;
       d.style.overflow = 'visible';
     } else {
       d.classList.add('ph');
@@ -1498,6 +1524,11 @@ function repxRun(root, data, o) {
       const B = tag(el('div', 'rb'), bl.b);
       box(B, mL, bl.y, cw, bl.h);
       const bfont = atr(bl.b, 'Font') ? repxFont(atr(bl.b, 'Font')) : baseFont;
+      inhBC = repxColor(atr(bl.b, 'BorderColor'));
+      { const bb = repxColor(atr(bl.b, 'BackColor')); if (bb) B.style.background = bb;
+        const bd = atr(bl.b, 'Borders'), bcc = inhBC || '#000';
+        if (bd) ['Left', 'Top', 'Right', 'Bottom'].forEach(sd => { if (/\ball\b/i.test(bd) || new RegExp(sd, 'i').test(bd)) B.style['border' + sd] = cm(25.4 / 96) + ' solid ' + bcc; });
+        B.style.boxSizing = 'border-box'; }
       const cx = Object.assign({}, bl.cx, { page: pi + 1, pages: pages.length });
       subItems(bl.b, 'Controls').forEach(c => { const n = rctl(c, cx, bfont, null); if (n) B.appendChild(n); });
       P.appendChild(B);
@@ -1795,7 +1826,7 @@ SAMPLES.prn = () => PRN_SAMPLE;
 /* ---------- ZPL: Zebra label language ---------- */
 const isZplSrc = s => /\^XA/i.test(s) && !/^\s*</.test(s);
 let zdpi = 203;
-const ZPL_DEFAULTS = k => /bar|code|ean|upc/i.test(k) ? '5053990161607' : /price|amount|mrp|rate|total/i.test(k) ? '4.00' : /name|desc|item|product/i.test(k) ? 'PRINGLES PAPRIKA 40 GM' : /date/i.test(k) ? '18-11-2026' : /qty|count/i.test(k) ? '1' : 'Sample';
+const ZPL_DEFAULTS = k => /item.?(no|num|code)|sku|plu/i.test(k) ? '9900746' : /bar|code|ean|upc/i.test(k) ? '5053990161607' : /price|amount|mrp|rate|total/i.test(k) ? '4.00' : /name|desc|item|product/i.test(k) ? 'PRINGLES PAPRIKA 40 GM' : /date/i.test(k) ? '18-11-2026' : /qty|count/i.test(k) ? '1' : 'Sample';
 
 function zplHex(s, ind) {
   if (!ind) return s;
@@ -1814,24 +1845,22 @@ function zplHex(s, ind) {
 function zplRun(src, dat) {
   const warns = [], seen = new Set(), keys = [], labels = [];
   const note = k => { if (!seen.has(k)) { seen.add(k); warns.push('Command ^' + k + ' is not drawn in the preview (it was skipped).'); } };
-  src = src.replace(/<#([^<>#\r\n][^<>\r\n]*)>/g, (m, k) => {
-    if (!keys.includes(k)) keys.push(k);
-    const v = dat[k];
-    return v == null ? m : String(v);
-  });
+  const PH = /<#([^<>#\r\n][^<>\r\n]*)>/g;
+  src.replace(PH, (m, k) => { if (!keys.includes(k)) keys.push(k); return m; });
+  const fill = t => t.replace(PH, (m, k) => (dat[k] == null ? m : String(dat[k])));
   /* tokenise on ^, remembering the source line of each command */
   const toks = []; let pos = 0, line = 1;
   src.split('^').forEach((t, idx) => {
-    if (idx > 0) toks.push({ t, ln: line });
+    if (idx > 0) toks.push({ t, ln: line, off: pos });
     line += (t.match(/\n/g) || []).length;
     pos += t.length + 1;
   });
   let L = null, cfg = { pw: 0, ll: 0, lh: [0, 0], ml: 0 };
-  let fx = 0, fy = 0, ft = false, fr = false, font = { f: '0', o: 'N', h: 30, w: 0 }, cfont = { f: '0', h: 30, w: 0 }, ind = '', by = { w: 2, r: 3, h: 10 }, fb = null, bar = null, fw = 'N', cur = null;
+  let fpos = null, fx = 0, fy = 0, ft = false, fr = false, font = { f: '0', o: 'N', h: 30, w: 0 }, cfont = { f: '0', h: 30, w: 0 }, ind = '', by = { w: 2, r: 3, h: 10 }, fb = null, bar = null, fw = 'N', cur = null;
   const startLabel = () => { L = { els: [], pw: cfg.pw, ll: cfg.ll }; cur = null; };
   startLabel();
   const num = (v, d) => { const n = parseFloat(v); return isNaN(n) ? d : n; };
-  toks.forEach(({ t, ln }) => {
+  toks.forEach(({ t, ln, off }) => {
     let cmd = t[0] === 'A' && t.length > 1 ? 'A' : t.slice(0, 2).toUpperCase();
     const body = cmd === 'A' ? t.slice(1) : t.slice(2);
     const raw = cmd === 'FD' ? body.replace(/[\r\n]+$/, '') : body.split(/[\r\n]/)[0];
@@ -1842,8 +1871,7 @@ function zplRun(src, dat) {
       case 'PW': L.pw = cfg.pw = num(p[0], 0); break;
       case 'LL': L.ll = cfg.ll = num(p[0], 0); break;
       case 'LH': cfg.lh = [num(p[0], 0), num(p[1], 0)]; break;
-      case 'FO': fx = num(p[0], 0) + cfg.lh[0]; fy = num(p[1], 0) + cfg.lh[1]; ft = false; break;
-      case 'FT': fx = num(p[0], 0) + cfg.lh[0]; fy = num(p[1], 0) + cfg.lh[1]; ft = true; break;
+      case 'FO': case 'FT': fx = num(p[0], 0) + cfg.lh[0]; fy = num(p[1], 0) + cfg.lh[1]; ft = cmd === 'FT'; fpos = { off: off + 2, len: raw.length, sx: num(p[0], 0), sy: num(p[1], 0), extra: p.slice(2).join(',') }; break;
       case 'FW': fw = (p[0] || 'N').toUpperCase(); break;
       case 'FR': fr = true; break;
       case 'FH': ind = p[0] ? p[0][0] : '_'; break;
@@ -1856,8 +1884,8 @@ function zplRun(src, dat) {
         break;
       }
       case 'FB': fb = { w: num(p[0], 0), lines: num(p[1], 1), sp: num(p[2], 0), j: (p[3] || 'L').toUpperCase() }; break;
-      case 'GB': L.els.push({ k: 'box', x: fx, y: fy, w: num(p[0], 1), h: num(p[1], 1), t: num(p[2], 1), c: (p[3] || 'B').toUpperCase(), r: num(p[4], 0), ln }); break;
-      case 'GC': { const d = num(p[0], 3); L.els.push({ k: 'circ', x: fx, y: fy, d, t: num(p[1], 1), c: (p[2] || 'B').toUpperCase(), ln }); break; }
+      case 'GB': L.els.push({ k: 'box', pos: fpos, spos: { off: off + 2, len: raw.length, rest: p.slice(2).join(',') }, x: fx, y: fy, w: num(p[0], 1), h: num(p[1], 1), t: num(p[2], 1), c: (p[3] || 'B').toUpperCase(), r: num(p[4], 0), ln }); break;
+      case 'GC': { const d = num(p[0], 3); L.els.push({ k: 'circ', pos: fpos, x: fx, y: fy, d, t: num(p[1], 1), c: (p[2] || 'B').toUpperCase(), ln }); break; }
       case 'BC': case 'B3': case 'BA': case 'BE': case 'BU': case 'B8': case 'B9': case 'BQ': case 'BX': case 'B7': case 'BD': case 'BK': case 'BI': case 'BJ': case 'BL': case 'BM': case 'BP': case 'BS': case 'BZ': {
         const o = (/^[NRIB]/i.test(raw) ? raw[0] : fw).toUpperCase();
         if (cmd === 'BC') bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: /^Y$/i.test(p[3] || 'N') };
@@ -1867,27 +1895,36 @@ function zplRun(src, dat) {
         break;
       }
       case 'FD': {
-        const txt = zplHex(raw, ind);
+        const txt = zplHex(fill(raw), ind);
         const ft0 = ft, x = fx, y = fy;
         if (bar) {
           const b = bar; bar = null;
-          if (b.k === 'other') { note(b.cmd + ' (this barcode type)'); L.els.push({ k: 'unk', x, y, ft: ft0, ln, text: txt, name: b.cmd }); }
-          else if (b.k === 'qr') L.els.push({ k: 'qr', x, y, ft: ft0, ln, text: txt.replace(/^[A-Z]{1,2},/, ''), m: b.m });
+          if (b.k === 'other') { note(b.cmd + ' (this barcode type)'); L.els.push({ k: 'unk', pos: fpos, x, y, ft: ft0, ln, text: txt, name: b.cmd }); }
+          else if (b.k === 'qr') L.els.push({ k: 'qr', pos: fpos, x, y, ft: ft0, ln, text: txt.replace(/^[A-Z]{1,2},/, ''), m: b.m });
           else {
             if (b.as) warns.push('Barcode ^' + b.as + ' is drawn in CODE128 style, so the bars differ from the real one.');
             if (b.o !== 'N') warns.push('Rotated barcodes are drawn upright in the preview.');
-            L.els.push({ k: 'bar', x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, ''), set: (/^>([;:9])/.exec(txt) || [])[1], bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
+            L.els.push({ k: 'bar', pos: fpos, x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, ''), set: (/^>([;:9])/.exec(txt) || [])[1], bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
           }
         } else {
           const f = font || cfont;
-          L.els.push({ k: 'txt', x, y, ft: ft0, ln, text: txt, f: f.f, o: f.o, h: f.h, w: f.w, fb, fr });
+          L.els.push({ k: 'txt', pos: fpos, x, y, ft: ft0, ln, text: txt, f: f.f, o: f.o, h: f.h, w: f.w, fb, fr });
           if (f.f !== '0' && !/^[A-H]$/i.test(f.f)) note('A' + f.f + ' (this font)');
         }
         fb = null; fr = false;
         break;
       }
       case 'FS': ft = false; fr = false; break;
-      case 'FP': case 'CI': case 'CW': case 'PQ': case 'PR': case 'PO': case 'PM': case 'LT': case 'LS': case 'MM': case 'MN': case 'MT': case 'JM': case 'JU': case 'LR': case 'PA': case 'MD': case 'FX': case 'FN': case 'SD': case 'JS': case 'PF': case 'XF': case 'DF': case '':
+      case 'FX': {
+        const m = /^(\s*STOCK\s+)(-?[\d.]+\s*,\s*-?[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+)(?:\s*,\s*(#?\w+))?/i.exec(raw);
+        if (m) {
+          const n = m[2].split(',').map(v => parseFloat(v));
+          const o0 = off + 2 + m[1].length;
+          L.els.push({ k: 'stock', x: n[0], y: n[1], w: n[2], h: n[3], c: m[3] || '#ffe600', ln, pos: { off: o0, len: m[2].length, sx: n[0], sy: n[1], extra: n[2] + ',' + n[3], whole: true }, spos: { off: o0, len: m[2].length, stock: true, x: n[0], y: n[1] } });
+        }
+        break;
+      }
+      case 'FP': case 'CI': case 'CW': case 'PQ': case 'PR': case 'PO': case 'PM': case 'LT': case 'LS': case 'MM': case 'MN': case 'MT': case 'JM': case 'JU': case 'LR': case 'PA': case 'MD': case 'FN': case 'SD': case 'JS': case 'PF': case 'XF': case 'DF': case '':
         break;
       default:
         if (/^[A-Z]{2}$/.test(cmd)) note(cmd);
@@ -1974,12 +2011,20 @@ function zplDom(res, o) {
         n = el('div', 'zg');
         n.style.left = Z(e.x); n.style.top = Z(e.y); n.style.width = n.style.height = Z(e.d);
         n.style.borderRadius = '50%'; n.style.border = Z(e.t) + ' solid currentColor';
+      } else if (e.k === 'stock') {
+        n = el('div', 'zs');
+        n.style.left = Z(e.x); n.style.top = Z(e.y); n.style.width = Z(e.w); n.style.height = Z(e.h); n.style.background = e.c;
       } else if (e.k === 'unk') {
         n = el('div', 'zq', e.name + '\n' + e.text);
         n.style.left = Z(e.x); n.style.top = Z(e.ft ? e.y - 80 : e.y); n.style.width = Z(160); n.style.height = Z(80);
       }
       if (e.k === 'txt' && e.ft && e.y < e.h * 0.7) o.warn('Text "' + e.text + '" (line ' + e.ln + ') starts at y=' + e.y + ' with height ' + e.h + ', so most of it falls above the label edge.');
-      if (n) { if (e.ln) n.dataset.ln = e.ln; d.appendChild(n); }
+      if (n) {
+        if (e.ln) n.dataset.ln = e.ln;
+        n._z = e; n._pw = pw;
+        if (e.spos) n.appendChild(el('div', 'rgrip'));
+        if (e.k === 'stock') d.insertBefore(n, d.firstChild); else d.appendChild(n);
+      }
     });
     out.push(d);
   });
@@ -2011,7 +2056,11 @@ function renderZpl(src) {
   $('prevpane').classList.remove('isrepx');
   $('repxinfo').hidden = true;
   repxHide();
-  lastKind = 'other';
+  if (lastKind !== 'zpl' && res.labels[0]) {
+    const wmm = (res.labels[0].pw || 812) * 25.4 / zdpi;
+    setZoom(Math.max(0.5, Math.min(3, 460 / (wmm * 3.78))));
+  }
+  lastKind = 'zpl';
   lastImages = [];
   res.keys.filter(k => data[k] == null).forEach(k => warns.push('Missing value: <#' + k + '>'));
   showWarns(warns);
@@ -2023,14 +2072,18 @@ function renderZpl(src) {
 
 const ZPL_SAMPLE = [
   '^XA',
+  '^MMT',
   '^PW508',
   '^LL305',
-  '^FT184,3^A0N,39,38^FDKP MART^FS',
-  '^FT31,65^A0N,37,23^FD<#itemname>^FS',
-  '^BY1,2,81^FT31,193^BCN,,Y,N',
-  '^FD>;<#barcode#zebra>^FS',
-  '^FT266,120^A0N,45,46^FDAED^FS',
-  '^FT300,201^A0N,100,66^FD<#priceaftertax>^FS',
+  '^LS0',
+  '^FXSTOCK 227,78,281,190,#ffe600^FS',
+  '^FPH,1^FT24,29^A0N,39,38^FH\\^CI28^FDNEW KMART^FS^CI27',
+  '^FT31,69^A0N,37,23^FH\\^CI28^FD<#itemname>^FS^CI27',
+  '^FT31,108^A0N,30,24^FH\\^CI28^FD< <#itemno> >^FS^CI27',
+  '^BY2,3,61^FT21,193^BCN,,Y,N',
+  '^FH\\^FD>;<#barcode#zebra>^FS',
+  '^FPH,1^FT276,160^A0N,35,35^FH\\^CI28^FDAED^FS^CI27',
+  '^FPH,1^FT274,201^A0N,55,55^FH\\^CI28^FD<#priceaftertax>^FS^CI27',
   '^PQ1,0,1,Y',
   '^XZ',
   ''
@@ -2116,6 +2169,7 @@ function render() {
   if (!src.trim()) { drawGutter(0); status(false, 'Paste or open some XML to see the printout.'); return; }
   const zpl = isZplSrc(src);
   $('zdw').hidden = !zpl;
+  $('zadd').hidden = !zpl;
   if (zpl) { renderZpl(src); return; }
   if (isPrnSrc(src)) { renderPrn(src); return; }
   const doc = new DOMParser().parseFromString(src, 'application/xml');
@@ -2578,6 +2632,148 @@ function selectByLine(n) {
     if (LINES.get(ELS[i]) === n && REPX_CTL.test(cType(ELS[i]))) { repxSelect(i); return; }
   }
 }
+
+/* >>>p9 drag, resize and add-field */
+const r1 = v => Math.round(v * 10) / 10;
+let drag = null, dragTipEl = null;
+function dragTip(ev, txt) {
+  if (!dragTipEl) { dragTipEl = document.createElement('div'); dragTipEl.className = 'dragtip'; document.body.appendChild(dragTipEl); }
+  dragTipEl.textContent = txt; dragTipEl.hidden = false;
+  dragTipEl.style.left = (ev.clientX + 14) + 'px'; dragTipEl.style.top = (ev.clientY + 14) + 'px';
+}
+const repxDraggable = e => e && !/^(XRTableCell|XRTableRow)$/.test(cType(e)) && atr(e, 'LocationFloat') != null;
+function dragTarget(ev) {
+  const grip = ev.target.closest && ev.target.closest('.rgrip');
+  if (repxActive) {
+    let node = grip ? grip.parentElement : ev.target.closest('.rc');
+    while (node && !(node.dataset && node.dataset.eid != null && repxDraggable(ELS[+node.dataset.eid]))) node = node.parentElement ? node.parentElement.closest('.rc') : null;
+    if (!node) return null;
+    const e = ELS[+node.dataset.eid], g = geom(e), r = node.getBoundingClientRect();
+    const scale = () => { const q = node.getBoundingClientRect(); return g.w > 0 ? q.width / g.w : g.h > 0 ? q.height / g.h : 0; };
+    return scale() ? { kind: 'repx', node, e, g, scale, sc: scale(), size: !!grip } : null;
+  }
+  const gn = grip ? grip.parentElement : (ev.target.closest && ev.target.closest('.zlabel [data-ln]'));
+  if (!gn || !gn._z) return null;
+  const lab = gn.closest('.zlabel');
+  const scale = () => lab.getBoundingClientRect().width / gn._pw;
+  return { kind: 'zpl', node: gn, e: gn._z, scale, sc: scale(), size: !!grip };
+}
+function zplApply(d) {
+  const e = d.e, src = ta.value;
+  let rep, off, len;
+  if (d.size) {
+    const sp = e.spos; if (!sp) return;
+    const w = Math.max(1, Math.round(e.w + d.ux)), h = Math.max(1, Math.round(e.h + d.uy));
+    off = sp.off; len = sp.len;
+    rep = sp.stock ? sp.x + ',' + sp.y + ',' + w + ',' + h : w + ',' + h + (sp.rest ? ',' + sp.rest : '');
+  } else {
+    const ps = e.pos; if (!ps) return;
+    off = ps.off; len = ps.len;
+    rep = Math.round(ps.sx + d.ux) + ',' + Math.round(ps.sy + d.uy) + (ps.extra ? ',' + ps.extra : '');
+  }
+  hist.push(src); if (hist.length > 60) hist.shift();
+  ta.setRangeText(rep, off, off + len, 'preserve');
+  ta.dispatchEvent(new Event('input'));
+  clearTimeout(timer);
+  render();
+}
+desk.addEventListener('pointerdown', ev => {
+  if (ev.button !== 0) return;
+  const t = dragTarget(ev);
+  if (!t) return;
+  drag = Object.assign(t, { x0: ev.clientX, y0: ev.clientY, moved: false, ux: 0, uy: 0 });
+  ev.preventDefault();
+});
+window.addEventListener('pointermove', ev => {
+  if (!drag) return;
+  const dx = ev.clientX - drag.x0, dy = ev.clientY - drag.y0;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  document.body.classList.add('dragging');
+  drag.sc = drag.scale() || drag.sc;
+  drag.ux = dx / drag.sc; drag.uy = dy / drag.sc;
+  const zp = drag.kind === 'zpl', rr = zp ? Math.round : r1;
+  if (drag.size) {
+    const w0 = zp ? drag.e.w : drag.g.w, h0 = zp ? drag.e.h : drag.g.h;
+    drag.node.style.width = Math.max(4, w0 * drag.sc + dx) + 'px';
+    drag.node.style.height = Math.max(4, h0 * drag.sc + dy) + 'px';
+    dragTip(ev, 'W ' + rr(Math.max(1, w0 + drag.ux)) + '  H ' + rr(Math.max(1, h0 + drag.uy)));
+  } else {
+    drag.node.style.translate = dx + 'px ' + dy + 'px';
+    const x0 = zp ? (drag.e.pos ? drag.e.pos.sx : 0) : drag.g.x, y0 = zp ? (drag.e.pos ? drag.e.pos.sy : 0) : drag.g.y;
+    dragTip(ev, 'X ' + rr(x0 + drag.ux) + '  Y ' + rr(y0 + drag.uy));
+  }
+});
+window.addEventListener('pointerup', () => {
+  const d = drag; drag = null;
+  document.body.classList.remove('dragging');
+  if (dragTipEl) dragTipEl.hidden = true;
+  if (!d || !d.moved) return;
+  d.node.style.translate = '';
+  if (d.kind === 'repx') {
+    if (d.size) patchAttr(d.e, 'SizeF', r1(Math.max(1, d.g.w + d.ux)) + ',' + r1(Math.max(1, d.g.h + d.uy)));
+    else patchAttr(d.e, 'LocationFloat', r1(d.g.x + d.ux) + ',' + r1(d.g.y + d.uy));
+    const i = EID.get(d.e); if (i != null) repxSelect(i);
+  } else zplApply(d);
+});
+document.addEventListener('keydown', ev => {
+  const tg = ev.target;
+  if (tg && /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName)) return;
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+  if (!dir) return;
+  const st = ev.shiftKey ? 10 : 1;
+  if (repxActive && selEid >= 0) {
+    const e = ELS[selEid];
+    if (!repxDraggable(e)) return;
+    const g = geom(e);
+    patchAttr(e, 'LocationFloat', r1(g.x + dir[0] * st) + ',' + r1(g.y + dir[1] * st));
+    repxSelect(selEid); ev.preventDefault(); return;
+  }
+  const n = desk.querySelector('.zlabel .sel');
+  if (n && n._z && n._z.pos) { zplApply({ e: n._z, size: false, ux: dir[0] * st, uy: dir[1] * st }); ev.preventDefault(); }
+});
+
+/* add a new field to a ZPL label */
+function zplAdd() {
+  const src = ta.value;
+  if (!isZplSrc(src)) return;
+  const type = $('zatype').value, val = $('zaval').value.trim();
+  const nm = val.replace(/^<#|>$/g, '').trim();
+  if ((type === 'tag' || type === 'bar') && !nm) { status(false, 'Type a tag name first, for example itemno.'); $('zaval').focus(); return; }
+  if (type === 'text' && !val) { status(false, 'Type the text to print first.'); $('zaval').focus(); return; }
+  if (type === 'stock' && /\^FXSTOCK/i.test(src)) { status(false, 'This label already has a stock colour area (the ^FXSTOCK line).'); return; }
+  const ys = [...src.matchAll(/\^F[OT]\s*-?[\d.]+\s*,\s*(-?[\d.]+)/g)].map(m => +m[1]);
+  const ll = +((/\^LL(\d+)/.exec(src) || [])[1]) || 305;
+  const y = Math.max(30, Math.min(ll - 30, (ys.length ? Math.max(...ys) : 20) + 40));
+  const safe = t => t.replace(/[\^~\\]/g, ' ');
+  let ins;
+  if (type === 'tag') ins = '^FT31,' + y + '^A0N,30,24^FD<#' + nm + '>^FS';
+  else if (type === 'text') ins = '^FT31,' + y + '^A0N,30,24^FD' + safe(val) + '^FS';
+  else if (type === 'bar') ins = '^BY2,3,61^FT21,' + y + '^BCN,,Y,N\n^FD<#' + nm + '>^FS';
+  else if (type === 'box') ins = '^FO20,' + y + '^GB200,3,3^FS';
+  else ins = '^FXSTOCK 227,78,281,190,#ffe600^FS';
+  const at = src.lastIndexOf('^XZ');
+  const i = at < 0 ? src.length : at;
+  const pre = i > 0 && src[i - 1] !== '\n' ? '\n' : '';
+  hist.push(src); if (hist.length > 60) hist.shift();
+  ta.value = src.slice(0, i) + pre + ins + '\n' + src.slice(i);
+  ta.dispatchEvent(new Event('input'));
+  clearTimeout(timer);
+  render();
+  const ln = (src.slice(0, i).match(/\n/g) || []).length + 1 + (pre ? 1 : 0);
+  goLine(ln, true);
+  update();
+  $('zaval').value = '';
+}
+$('zaadd').addEventListener('click', zplAdd);
+$('zaval').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); zplAdd(); } });
+$('zundo').addEventListener('click', () => repxUndo());
+$('zatype').addEventListener('change', () => {
+  const t = $('zatype').value, v = $('zaval');
+  v.disabled = t === 'box' || t === 'stock';
+  v.placeholder = t === 'text' ? 'text to print' : t === 'box' || t === 'stock' ? '(no name needed)' : 'tag name, e.g. itemno';
+});
+/* <<<p9 */
 
 /* ---------- Wiring ---------- */
 let timer = 0, saveTimer = 0;
