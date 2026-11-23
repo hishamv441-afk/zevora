@@ -321,6 +321,21 @@ body{padding-block:0;padding-inline:0}
   .tools{width:100%}
   .tools .btn{flex:1 1 auto}
 }
+
+.pemenu{position:fixed;z-index:50;top:calc(52px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));width:min(420px,calc(100vw - 32px));
+  background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;
+  box-shadow:0 12px 40px rgba(0,0,0,.28)}
+.peh{display:flex;justify-content:space-between;align-items:center}
+.pef{display:grid;gap:5px;font:500 12px var(--ui);color:var(--muted)}
+.pef select{color:var(--fg);width:100%}
+.peb{display:grid;gap:8px}
+.peb .btn{text-align:left;padding:9px 12px}
+.peb .btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.peb .btn:disabled{opacity:.45;cursor:not-allowed}
+.penote{margin:0;min-height:1.4em;font-size:12.5px;color:var(--ok)}
+.penote.bad{color:var(--err)}
+.pehelp{margin:0;font-size:12px;color:var(--muted)}
+@media print{.pemenu,.bar,.help{display:none!important}}
 </style>
 <div class="app">
   <header class="bar">
@@ -347,12 +362,26 @@ body{padding-block:0;padding-inline:0}
       <button type="button" class="btn" id="logobtn">Upload images</button>
       <input type="file" id="logo" accept="image/*" multiple hidden>
       <button type="button" class="btn" id="copy">Copy XML</button>
+      <button type="button" class="btn" id="pe" aria-expanded="false" aria-controls="pemenu">Print / Export</button>
       <button type="button" class="btn icon" id="theme" aria-label="Switch light or dark theme" title="Theme">Theme</button>
       <button type="button" class="btn local" id="dlxml" hidden>Download XML</button>
       <button type="button" class="btn local" id="dljson" hidden>Download JSON</button>
       <button type="button" class="btn local" id="prn" hidden>Print</button>
     </div>
   </header>
+  <div class="pemenu" id="pemenu" role="dialog" aria-label="Print and export" hidden>
+    <div class="peh"><b>Print / Export</b><button type="button" class="btn sm" id="peclose">Close</button></div>
+    <label class="pef">Convert the current printout to
+      <select id="pefmt" class="btn"></select>
+    </label>
+    <div class="peb">
+      <button type="button" class="btn pri" id="peprint">Convert and print</button>
+      <button type="button" class="btn" id="pedl">Convert and download</button>
+      <button type="button" class="btn" id="pesend">Send raw to printer (USB / serial)</button>
+    </div>
+    <p class="penote" id="penote" role="status"></p>
+    <p class="pehelp">Printing and downloads need this page opened from a file or from your own web address. The claude.ai viewer blocks them. ZPL, .prn and ESC/POS can go straight to a printer in Chrome or Edge. ESC/POS conversion keeps text, alignment and bold, and leaves out images and barcodes.</p>
+  </div>
   <details class="help"><summary>How it works and assumptions</summary><p>Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files, Zebra ZPL labels with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p><p>Assumptions for POS Commands XML: Large and Medium use a 12 x 24 dot font (48 characters on 80 mm), small uses 9 x 17 dots (64 characters), SetPosition and SetLeftMargin are in dots, PrintBarcodeImage prepares the image that PrintImageDefined prints, and a missing LineFeed means Yes. Real printers can differ in details. Barcodes in the other layouts are placeholders.</p></details>
   <main class="split" id="split">
     <section class="pane" aria-label="Editor">
@@ -3089,6 +3118,167 @@ $('zdpi').addEventListener('change', e => { zdpi = +e.target.value || 203; rende
 $('dlxml').addEventListener('click', () => { if (isZplSrc(ta.value)) save('label.zpl', ta.value, 'text/plain'); else if (isPrnSrc(ta.value)) save('receipt.prn', prnToBytes(ta.value), 'application/octet-stream'); else save('receipt-template.xml', ta.value, 'application/xml'); });
 $('dljson').addEventListener('click', () => save('sample-data.json', jt.value, 'application/json'));
 $('prn').addEventListener('click', () => window.print());
+/* >>>p12 print and export */
+(function () {
+  const menu = $('pemenu'), fmtSel = $('pefmt'), note = $('penote');
+  const kindNow = () => isZplSrc(ta.value) ? 'zpl' : isPrnSrc(ta.value) ? 'prn' : 'xml';
+  const target = () => desk.querySelector('.slip,.a4,.rp,.zlabel');
+  const zoomNow = () => parseFloat(getComputedStyle(desk).getPropertyValue('--zoom')) || 1;
+  const mmOf = el => { const w = el.getBoundingClientRect().width; return +(w / (3.7795 * zoomNow())).toFixed(1); };
+  const say = (m, bad) => { note.textContent = m; note.className = 'penote' + (bad ? ' bad' : ''); };
+  const tick = ms => new Promise(r => setTimeout(r, ms));
+
+  function fillFormats() {
+    const k = kindNow(), has = !!target();
+    const opts = [['png', 'PNG image'], ['pdf', 'PDF (browser print dialog)'], ['html', 'HTML page'], ['txt', 'Plain text']];
+    if (k === 'xml' && target() && target().classList.contains('slip')) opts.push(['escpos', 'ESC/POS printer file (.prn)']);
+    opts.push(['src', k === 'zpl' ? 'Original ZPL (.zpl)' : k === 'prn' ? 'Original printer file (.prn)' : 'Original template (.xml)']);
+    opts.push(['json', 'Sample data (.json)']);
+    const cur = fmtSel.value;
+    fmtSel.innerHTML = opts.map(o => '<option value="' + o[0] + '">' + o[1] + '</option>').join('');
+    if (opts.some(o => o[0] === cur)) fmtSel.value = cur;
+    $('pedl').disabled = $('peprint').disabled = !has && !['src', 'json', 'escpos'].includes(fmtSel.value);
+  }
+
+  /* snapshot of the paper with every computed style inlined, so it draws without the page's CSS */
+  function snapshot(el) {
+    const clone = el.cloneNode(true);
+    const a = [el, ...el.querySelectorAll('*')], b = [clone, ...clone.querySelectorAll('*')];
+    a.forEach((s, i) => {
+      const cs = getComputedStyle(s), t = b[i];
+      if (!t.style) return;
+      let css = '';
+      for (let j = 0; j < cs.length; j++) css += cs[j] + ':' + cs.getPropertyValue(cs[j]) + ';';
+      t.setAttribute('style', css);
+      t.removeAttribute('data-ln'); t.removeAttribute('data-eid');
+      t.classList && t.classList.remove('sel');
+    });
+    clone.querySelectorAll('.rgrip').forEach(g => g.remove());
+    clone.style.margin = '0'; clone.style.translate = 'none'; clone.style.opacity = '1';
+    return clone;
+  }
+  const paperBox = el => { const r = el.getBoundingClientRect(); return { w: Math.ceil(r.width), h: Math.ceil(r.height) + (el.classList.contains('slip') ? Math.ceil(zoomNow() * 8) : 0) }; };
+
+  function toPNG(el) {
+    return new Promise((res, rej) => {
+      const { w, h } = paperBox(el), sc = 2;
+      const clone = snapshot(el);
+      const xml = new XMLSerializer().serializeToString(clone);
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w * sc + '" height="' + h * sc + '" viewBox="0 0 ' + w + ' ' + h + '"><foreignObject width="' + w + '" height="' + h + '"><div xmlns="http://www.w3.org/1999/xhtml">' + xml + '</div></foreignObject></svg>';
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = w * sc; c.height = h * sc;
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0);
+        try { c.toBlob(bl => bl ? res(bl) : rej(new Error('Could not make the image')), 'image/png'); } catch (e) { rej(e); }
+      };
+      img.onerror = () => rej(new Error('Could not draw the preview as an image'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+  const toHTML = el => {
+    const mm = mmOf(el);
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Printout</title><style>@page{margin:0}body{margin:0;background:#fff}</style></head><body>' + new XMLSerializer().serializeToString(snapshot(el)).replace(/ xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/g, '') + '</body></html>';
+  };
+  function toText(el) {
+    const L = [];
+    const rows = el.querySelectorAll('.ln,.rule,.pl,.zt,.zb,.rc,tr');
+    if (el.classList.contains('slip')) {
+      el.querySelectorAll('.ln,.rule,.pl,.cutline').forEach(n => L.push(n.classList.contains('rule') ? '-'.repeat(32) : n.classList.contains('cutline') ? '- - - cut - - -' : n.textContent));
+    } else rows.forEach(n => { const t = n.textContent.trim(); if (t) L.push(t); });
+    return L.join('\n') + '\n';
+  }
+  function toEscpos(el) {
+    if (!el || !el.classList.contains('slip')) throw new Error('This layout has no receipt lines to convert. Use PNG or PDF instead.');
+    const enc = new TextEncoder(), out = [0x1B, 0x40];
+    const put = s => enc.encode(s.replace(/[^\x09\x20-\x7E -￿]/g, '')).forEach(x => out.push(x));
+    let omitted = 0;
+    [...el.children].forEach(n => {
+      if (n.classList.contains('ln')) {
+        out.push(0x1B, 0x61, n.classList.contains('c') ? 1 : n.classList.contains('r') ? 2 : 0);
+        [...n.childNodes].forEach(c => {
+          const bold = c.nodeType === 1 && c.classList.contains('b');
+          if (bold) out.push(0x1B, 0x45, 1);
+          put(c.textContent);
+          if (bold) out.push(0x1B, 0x45, 0);
+        });
+        out.push(0x0A);
+      } else if (n.classList.contains('rule')) { out.push(0x1B, 0x61, 0); put('-'.repeat(32)); out.push(0x0A); }
+      else if (n.classList.contains('pos') || n.classList.contains('pl')) { out.push(0x1B, 0x61, 0); put(n.textContent); out.push(0x0A); }
+      else if (n.querySelector && n.querySelector('svg,img,canvas')) omitted++;
+      else if (n.textContent.trim()) { put(n.textContent); out.push(0x0A); }
+    });
+    out.push(0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00);
+    return { bytes: new Uint8Array(out), omitted };
+  }
+
+  /* convert the current template to the chosen format; returns { name, data, type, print? } */
+  async function convert(fmt) {
+    const el = target(), k = kindNow();
+    if (fmt === 'src') return k === 'zpl' ? { name: 'label.zpl', data: ta.value, type: 'text/plain', raw: true }
+      : k === 'prn' ? { name: 'receipt.prn', data: prnToBytes(ta.value), type: 'application/octet-stream', raw: true }
+      : { name: 'template.xml', data: ta.value, type: 'application/xml' };
+    if (fmt === 'json') return { name: 'sample-data.json', data: jt.value, type: 'application/json' };
+    if (!el) throw new Error('Nothing is drawn yet. Fix the template first.');
+    if (fmt === 'png') return { name: 'printout.png', data: await toPNG(el), type: 'image/png', mm: mmOf(el) };
+    if (fmt === 'html') return { name: 'printout.html', data: toHTML(el), type: 'text/html' };
+    if (fmt === 'txt') return { name: 'printout.txt', data: toText(el), type: 'text/plain' };
+    if (fmt === 'pdf') return { name: 'printout.pdf', pdf: true, mm: mmOf(el) };
+    if (fmt === 'escpos') { const r = toEscpos(el); return { name: 'receipt.prn', data: r.bytes, type: 'application/octet-stream', raw: true, omitted: r.omitted }; }
+    throw new Error('Unknown format');
+  }
+
+  function printFrame(html) {
+    const f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(f);
+    f.srcdoc = html;
+    f.onload = () => { setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { say('The browser blocked printing here. Open the page from a file or the GitHub link.', true); } setTimeout(() => f.remove(), 60000); }, 300); };
+  }
+
+  let port = null;
+  async function sendRaw(bytes) {
+    if (!('serial' in navigator)) throw new Error('This browser cannot talk to printers directly. Use Chrome or Edge, or download the file and send it with your printer software.');
+    if (!port) port = await navigator.serial.requestPort();
+    try { await port.open({ baudRate: 115200 }); } catch (e) { if (!/already open/i.test(e.message)) throw e; }
+    const w = port.writable.getWriter();
+    try { await w.write(typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes); } finally { w.releaseLock(); }
+  }
+
+  async function run(action) {
+    say('Working…');
+    try {
+      const fmt = fmtSel.value, r = await convert(fmt);
+      if (action === 'dl') {
+        if (r.pdf) { say('PDF is made by the print dialog. Choose "Save as PDF" as the printer.'); window.print(); return; }
+        save(r.name, r.data, r.type);
+        say('Saved ' + r.name + (r.omitted ? ' (images and barcodes are left out of ESC/POS text conversion)' : ''));
+      } else if (action === 'print') {
+        if (r.pdf) { window.print(); say('Print dialog opened.'); return; }
+        if (r.raw) { await sendRaw(r.data); say('Sent ' + r.name + ' to the printer' + (r.omitted ? ' (images and barcodes left out)' : '') + '.'); return; }
+        if (r.type === 'image/png') {
+          const url = URL.createObjectURL(r.data);
+          printFrame('<!doctype html><html><head><meta charset="utf-8"><style>@page{margin:0}body{margin:0}img{display:block;width:' + r.mm + 'mm}</style></head><body><img src="' + url + '"></body></html>');
+        } else if (r.type === 'text/html') printFrame(r.data);
+        else if (r.type === 'text/plain') printFrame('<!doctype html><meta charset="utf-8"><style>@page{margin:4mm}body{margin:0;font:12px/1.3 ui-monospace,Menlo,Consolas,monospace;white-space:pre}</style><body>' + r.data.replace(/[&<]/g, c => c === '&' ? '&amp;' : '&lt;') + '</body>');
+        else { save(r.name, r.data, r.type); say('This format cannot be printed directly, so it was saved instead.'); return; }
+        say('Print dialog opened.');
+      } else if (action === 'send') {
+        if (!r.raw) throw new Error('Pick ZPL, a .prn file or ESC/POS to send raw data to a printer.');
+        await sendRaw(r.data); say('Sent ' + r.name + ' to the printer.');
+      }
+    } catch (e) { say(e.message || String(e), true); }
+  }
+
+  $('pe').addEventListener('click', () => { menu.hidden = !menu.hidden; $('pe').setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) { menu.style.top = (document.querySelector('.bar').getBoundingClientRect().bottom + 6) + 'px'; fillFormats(); say(''); } });
+  $('peclose').addEventListener('click', () => { menu.hidden = true; $('pe').setAttribute('aria-expanded', 'false'); });
+  fmtSel.addEventListener('change', fillFormats);
+  $('pedl').addEventListener('click', () => run('dl'));
+  $('peprint').addEventListener('click', () => run('print'));
+  $('pesend').addEventListener('click', () => run('send'));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) $('peclose').click(); });
+  window.__pe = { convert, toText };
+})();
+/* <<<p12 */
 
 /* Start with the last session, or the POS Commands sample */
 let startXml = SAMPLES.pos(), startJson = POS_DATA;
