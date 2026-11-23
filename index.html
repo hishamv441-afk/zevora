@@ -245,10 +245,90 @@ body.dragging{user-select:none;cursor:grabbing}
 
 .zb{width:max-content}
 .zhri{text-align:center}
+
+/* ===== Redesign: app shell, graphite + teal ===== */
+:root{
+  --bg:#e9edec; --panel:#f8faf9; --line:#d3dad8; --fg:#17201f; --muted:#5a6866;
+  --accent:#0d7a70; --accent-fg:#ffffff; --desk:#c9d1cf; --gutter:#eef2f1; --dot:#b3bdbb;
+  --bar:#14201f; --bar-fg:#eef5f3; --bar-muted:#9db3af; --chip:#d7efe9; --chip-fg:#0a5a52;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1211; --panel:#141c1b; --line:#243230; --fg:#e3ecea; --muted:#8fa3a0;
+    --accent:#4fd1c0; --accent-fg:#06211d; --desk:#080d0c; --gutter:#111918; --dot:#1b2725;
+    --bar:#070b0b; --bar-fg:#e3ecea; --bar-muted:#7f9692; --chip:#12332f; --chip-fg:#7de3d4; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1211; --panel:#141c1b; --line:#243230; --fg:#e3ecea; --muted:#8fa3a0;
+  --accent:#4fd1c0; --accent-fg:#06211d; --desk:#080d0c; --gutter:#111918; --dot:#1b2725;
+  --bar:#070b0b; --bar-fg:#e3ecea; --bar-muted:#7f9692; --chip:#12332f; --chip-fg:#7de3d4; color-scheme:dark;
+}
+html,body{height:100%}
+body{padding-block:0;padding-inline:0}
+.app{max-width:none;height:100%;display:flex;flex-direction:column;gap:0}
+.bar{
+  background:var(--bar);color:var(--bar-fg);gap:8px 20px;flex:none;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.mark{color:var(--accent);flex:none}
+.bar h1{font:600 16px/1.2 var(--ui);letter-spacing:.01em;white-space:nowrap}
+.fmt{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 8px;border-radius:3px;background:var(--chip);color:var(--chip-fg)}
+.bar .btn,.bar select.btn{background:transparent;color:var(--bar-fg);border-color:color-mix(in srgb,var(--bar-fg) 22%,transparent)}
+.bar .btn:hover{border-color:var(--accent);color:var(--accent)}
+.bar select.btn option{background:var(--panel);color:var(--fg)}
+.bar #open{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.bar #open:hover{color:var(--accent-fg);filter:brightness(1.08)}
+.btn.icon{padding:7px 12px}
+.help{flex:none;background:var(--panel);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);
+  padding:0 max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.help summary{cursor:pointer;padding:6px 0;font:500 12px var(--ui);letter-spacing:.04em;list-style:none}
+.help summary::before{content:"+";display:inline-block;width:1.2em;color:var(--accent);font-weight:700}
+.help[open] summary::before{content:"–"}
+.help p{margin:0 0 8px;max-width:110ch}
+.help[open]{max-height:34vh;overflow:auto}
+.split{
+  flex:1;min-height:0;height:auto;gap:10px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) max(10px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+}
+.pane{border-radius:8px}
+.ph{padding:8px 10px;background:var(--panel)}
+.seg{border-radius:6px;background:var(--bg)}
+.seg button{padding:5px 12px;font-size:12.5px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--panel)}
+.seg.tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.btn{border-radius:6px}
+.ps{background:var(--gutter);gap:6px 18px;padding:6px 10px}
+.zadd{background:var(--gutter);padding:8px 10px}
+.desk{
+  background-color:var(--desk);
+  background-image:radial-gradient(var(--dot) 1px,transparent 1.2px);background-size:18px 18px;
+  padding:28px 20px 48px;
+}
+.slip,.a4,.rp,.zlabel{box-shadow:0 0 0 1px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.18),0 18px 40px rgba(0,0,0,.22)}
+.selbar,.warns{background:var(--panel)}
+.st{font:500 12px var(--mono)}
+.gut span.h{background:color-mix(in srgb,var(--accent) 28%,transparent)}
+#prevpane .ph .zoom{margin-left:auto}
+@media (max-width:860px){
+  html,body,.app{height:auto}
+  .split{flex:none}
+  .pane{height:min(78vh,720px)}
+  .bar h1{white-space:normal}
+}
+@media (max-width:520px){
+  .tools{width:100%}
+  .tools .btn{flex:1 1 auto}
+}
 </style>
 <div class="app">
   <header class="bar">
-    <h1>Bill XML Live Preview</h1>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="M5 2h14v18l-2.33-1.5L14.33 20 12 18.5 9.67 20 7.33 18.5 5 20z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.5 7h7M8.5 10.5h7M8.5 14h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <h1>Bill XML Live Preview</h1>
+      <span class="fmt" id="fmt" title="Detected template format">XML</span>
+    </div>
     <div class="tools">
       <select id="sample" class="btn" aria-label="Load a sample">
         <option value="">Load sample…</option>
@@ -267,12 +347,13 @@ body.dragging{user-select:none;cursor:grabbing}
       <button type="button" class="btn" id="logobtn">Upload images</button>
       <input type="file" id="logo" accept="image/*" multiple hidden>
       <button type="button" class="btn" id="copy">Copy XML</button>
+      <button type="button" class="btn icon" id="theme" aria-label="Switch light or dark theme" title="Theme">Theme</button>
       <button type="button" class="btn local" id="dlxml" hidden>Download XML</button>
       <button type="button" class="btn local" id="dljson" hidden>Download JSON</button>
       <button type="button" class="btn local" id="prn" hidden>Print</button>
     </div>
   </header>
-  <p class="hint">Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files, Zebra ZPL labels with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p>
+  <details class="help"><summary>How it works and assumptions</summary><p>Edit the template or the sample data and the receipt redraws as you type. Reads POS &lt;Commands&gt; XML, raw ESC/POS .prn files, Zebra ZPL labels with loops, DevExpress .repx reports, Epson ePOS-Print tags and a simple &lt;bill&gt; layout. Click any part of the receipt to jump to its line in the XML. Download and Print buttons appear when this page is opened as a local file.</p><p>Assumptions for POS Commands XML: Large and Medium use a 12 x 24 dot font (48 characters on 80 mm), small uses 9 x 17 dots (64 characters), SetPosition and SetLeftMargin are in dots, PrintBarcodeImage prepares the image that PrintImageDefined prints, and a missing LineFeed means Yes. Real printers can differ in details. Barcodes in the other layouts are placeholders.</p></details>
   <main class="split" id="split">
     <section class="pane" aria-label="Editor">
       <div class="ph">
@@ -338,7 +419,6 @@ body.dragging{user-select:none;cursor:grabbing}
       <div class="warns" id="warns" hidden></div>
     </section>
   </main>
-  <p class="note">Assumptions for POS Commands XML: Large and Medium use a 12 x 24 dot font (48 characters on 80 mm), small uses 9 x 17 dots (64 characters), SetPosition and SetLeftMargin are in dots, PrintBarcodeImage prepares the image that PrintImageDefined prints, and a missing LineFeed means Yes. Real printers can differ in details. Barcodes in the other layouts are placeholders.</p>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script>
@@ -3031,6 +3111,32 @@ if (!readJSON()) { jt.value = POS_DATA; readJSON(); }
 cmm.value = customMM; $('dens').value = dens; $('cut').checked = cutOn; $('auto').checked = autoFill;
 setTab('xml');
 setMode(mode);
+})();
+</script>
+
+<script>
+(function(){
+  var x=document.getElementById('xml'),chip=document.getElementById('fmt'),tb=document.getElementById('theme');
+  function kind(t){
+    var s=(t||'').replace(/^\uFEFF/,'').trim();
+    if(/^\^XA|\^XA/.test(s.slice(0,400))) return 'ZPL label';
+    if(/^r[A-Z]{3,}|^\s*sLABEL|wTEXT/m.test(s.slice(0,600))&&!/^</.test(s)) return 'Label TEXT/1DB';
+    if(/<XtraReports/i.test(s.slice(0,1200))) return 'REPX report';
+    if(/<Commands/i.test(s.slice(0,600))) return 'POS commands';
+    if(/<epos-print/i.test(s.slice(0,600))) return 'ePOS-Print';
+    if(/<bill/i.test(s.slice(0,600))) return 'Bill XML';
+    if(/^\s*</.test(s)) return 'XML';
+    return /[\x00-\x08]|ESC/.test(s.slice(0,200))||s.length?'Raw PRN / text':'Empty';
+  }
+  function upd(){chip.textContent=kind(x.value)}
+  var t;x.addEventListener('input',function(){clearTimeout(t);t=setTimeout(upd,200)});
+  new MutationObserver(upd).observe(x,{characterData:true});
+  setInterval(upd,800);upd();
+  tb.addEventListener('click',function(){
+    var r=document.documentElement,d=r.getAttribute('data-theme');
+    var dark=d?d==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+    r.setAttribute('data-theme',dark?'light':'dark');
+  });
 })();
 </script>
 
