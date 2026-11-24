@@ -1989,10 +1989,10 @@ function zplRun(src, dat) {
       case 'FR': fr = true; break;
       case 'FH': ind = p[0] ? p[0][0] : '_'; break;
       case 'CF': cfont = { f: p[0] || '0', h: num(p[1], 30), w: num(p[2], 0) }; break;
-      case 'BY': by = { w: num(p[0], 2), r: num(p[1], 3), h: num(p[2], by.h) }; break;
+      case 'BY': by = { w: num(p[0], 2), r: num(p[1], 3), h: num(p[2], by.h), wp: { off: off + 2, len: raw.split(',')[0].length } }; break;
       case 'A': {
         const m = /^([A-Z0-9@])([NRIB])?/i.exec(raw);
-        font = { f: m ? m[1] : '0', o: m && m[2] ? m[2].toUpperCase() : fw, h: num(p[1], cfont.h), w: num(p[2], 0) };
+        font = { f: m ? m[1] : '0', o: m && m[2] ? m[2].toUpperCase() : fw, h: num(p[1], cfont.h), w: num(p[2], 0), apos: { off: off + 1, len: raw.length, head: raw.split(',')[0] } };
         if (!p[1] && !m) font = { f: cfont.f, o: fw, h: cfont.h, w: cfont.w };
         break;
       }
@@ -2001,7 +2001,7 @@ function zplRun(src, dat) {
       case 'GC': { const d = num(p[0], 3); L.els.push({ k: 'circ', pos: fpos, x: fx, y: fy, d, t: num(p[1], 1), c: (p[2] || 'B').toUpperCase(), ln }); break; }
       case 'BC': case 'B3': case 'BA': case 'BE': case 'BU': case 'B8': case 'B9': case 'BQ': case 'BX': case 'B7': case 'BD': case 'BK': case 'BI': case 'BJ': case 'BL': case 'BM': case 'BP': case 'BS': case 'BZ': {
         const o = (/^[NRIB]/i.test(raw) ? raw[0] : fw).toUpperCase();
-        if (cmd === 'BC') bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: /^Y$/i.test(p[3] || 'N') };
+        if (cmd === 'BC') { const rp = raw.split(','); bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: /^Y$/i.test(p[3] || 'N'), hp: rp.length > 1 ? { off: off + 2 + rp[0].length + 1, len: rp[1].length } : { off: off + 2 + raw.length, len: 0, add: true } }; }
         else if (cmd === 'BQ') bar = { k: 'qr', o, m: num(p[2], 4) };
         else if (cmd === 'BE' || cmd === 'B8' || cmd === 'BU' || cmd === 'B3' || cmd === 'BA') bar = { k: 'c128', o, h: num(p[1], by.h), hri: !/^N$/i.test(p[2] || 'Y'), above: false, as: cmd };
         else { bar = { k: 'other', cmd }; }
@@ -2017,11 +2017,11 @@ function zplRun(src, dat) {
           else {
             if (b.as) warns.push('Barcode ^' + b.as + ' is drawn in CODE128 style, so the bars differ from the real one.');
             if (b.o !== 'N') warns.push('Rotated barcodes are drawn upright in the preview.');
-            L.els.push({ k: 'bar', pos: fpos, x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, ''), set: (/^>([;:9])/.exec(txt) || [])[1], bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true });
+            L.els.push({ k: 'bar', pos: fpos, x, y, ft: ft0, ln, text: txt.replace(/^>[;:9]/, ''), set: (/^>([;:9])/.exec(txt) || [])[1], bw: by.w, h: b.h, hri: b.hri, above: b.above, bar: true , hpos: b.hp, bwpos: by.wp });
           }
         } else {
           const f = font || cfont;
-          L.els.push({ k: 'txt', pos: fpos, x, y, ft: ft0, ln, text: txt, f: f.f, o: f.o, h: f.h, w: f.w, fb, fr });
+          L.els.push({ k: 'txt', pos: fpos, x, y, ft: ft0, ln, text: txt, f: f.f, o: f.o, h: f.h, w: f.w, fb, fr, apos: f.apos });
           if (f.f !== '0' && !/^[A-H]$/i.test(f.f)) note('A' + f.f + ' (this font)');
         }
         fb = null; fr = false;
@@ -2257,12 +2257,12 @@ function lblRun(src, dat) {
     else if (cmd === 'ORIGIN') { ox = nv(0, 0); oy = nv(1, 0); }
     else if (cmd === 'TEXT') {
       const rot = { 0: 'N', 90: 'R', 180: 'I', 270: 'B' }[nv(2, 0)] || 'N';
-      L.els.push({ k: 'txt', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1] ? ps[ps.length - 1].t : '')), o: rot, fixed: { cw: 8, ch: 16 }, mx: nv(4, 1) || 1, my: nv(5, 1) || 1 });
+      L.els.push({ k: 'txt', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1] ? ps[ps.length - 1].t : '')), o: rot, apos: null, mpos: ps.length > 5 ? { off: ps[4].off, len: ps[5].off + ps[5].t.length - ps[4].off } : null, fixed: { cw: 8, ch: 16 }, mx: nv(4, 1) || 1, my: nv(5, 1) || 1 });
     } else if (cmd === '1DB') {
       const type = (ps[3] && ps[3].t) || 'C128';
       if (!/^C?128$/i.test(type)) warns.push('Barcode type ' + type + ' is drawn in CODE128 style, so the bars differ from the real one.');
       const hr = (ps[8] && ps[8].t) || '';
-      L.els.push({ k: 'bar', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1].t)), bw: nv(5, 2) || 2, h: nv(7, 60), hri: /^H[^N]/i.test(hr) || (hr === '' ? false : !/^N/i.test(hr)), above: /^HA|^HT/i.test(hr), bar: true });
+      L.els.push({ k: 'bar', pos: posOf(), x: nv(0, 0) + ox, y: nv(1, 0) + oy, ft: false, ln, text: fill(lblUnq(ps[ps.length - 1].t)), bw: nv(5, 2) || 2, h: nv(7, 60), hri: /^H[^N]/i.test(hr) || (hr === '' ? false : !/^N/i.test(hr)), above: /^HA|^HT/i.test(hr), bar: true, hpos: ps[7] ? { off: ps[7].off, len: ps[7].t.length } : null, bwpos: ps[5] ? { off: ps[5].off, len: ps[5].t.length } : null });
     } else if (!known.includes(cmd) && !seen.has(cmd)) { seen.add(cmd); warns.push('Command ' + cmd + ' is not drawn in the preview (it was skipped).'); }
   });
   if (extStock.on) L.els.push({ k: 'stock', ext: true, x: extStock.x, y: extStock.y, w: extStock.w, h: extStock.h, c: extStock.c });
@@ -2434,7 +2434,7 @@ function render() {
     $('repxinfo').textContent = 'From file: ' + Math.round(repxW) + ' mm wide';
     if (lastKind !== 'repx') setZoom(Math.min(2.2, fitZoom()));
     if (selEid >= 0 && (!ELS[selEid] || (atr(ELS[selEid], 'Name') || '') !== selName)) repxHide();
-  } else repxHide();
+  } else if (!(window.__lb && window.__lb.sel)) repxHide();
   lastKind = repxActive ? 'repx' : 'other';
   if (tab === 'img' && repxActive) buildImgs();
   showWarns(warns);
@@ -3279,6 +3279,304 @@ $('prn').addEventListener('click', () => window.print());
   window.__pe = { convert, toText };
 })();
 /* <<<p12 */
+/* >>>p13 alignment and size panel for every format except REPX (REPX has its own panel) */
+(function () {
+  const box = $('selbar');
+  let sel = null, owned = false;   /* sel: { kind, ln, idx } */
+  const AL3 = [['Left', 'l'], ['Center', 'c'], ['Right', 'r']];
+
+  const srcKind = () => {
+    const s = ta.value;
+    if (isLblSrc(s)) return 'lbl';
+    if (isZplSrc(s)) return 'zpl';
+    if (isPrnSrc(s)) return 'prn';
+    if (/^\s*</.test(s)) {
+      if (/<Commands\b/i.test(s)) return 'pos';
+      if (/<epos-print\b/i.test(s)) return 'epos';
+    }
+    return 'other';
+  };
+  const lines = () => ta.value.split('\n');
+  const commit = (arr, newLn) => {
+    hist.push(ta.value); if (hist.length > 60) hist.shift();
+    ta.value = arr.join('\n');
+    ta.dispatchEvent(new Event('input'));
+    clearTimeout(timer);
+    render();
+    if (newLn) { sel.ln = newLn; goLine(newLn, false); }
+    refresh();
+  };
+  const patchRange = (off, len, rep) => {
+    hist.push(ta.value); if (hist.length > 60) hist.shift();
+    ta.setRangeText(rep, off, off + len, 'preserve');
+    ta.dispatchEvent(new Event('input'));
+    clearTimeout(timer);
+    render();
+    refresh();
+  };
+  const attrOf = (l, n) => { const m = new RegExp('\\b' + n + '\\s*=\\s*"([^"]*)"', 'i').exec(l); return m ? m[1] : null; };
+  const setAttr = (l, n, v) => {
+    const m = /^(\s*<[^>]*?)(\s*\/?>)([\s\S]*)$/.exec(l);
+    if (!m) return l;
+    let head = m[1];
+    const re = new RegExp('(\\b' + n + '\\s*=\\s*")([^"]*)(")', 'i');
+    if (v === '' || v == null) head = head.replace(new RegExp('\\s+' + n + '\\s*=\\s*"[^"]*"', 'i'), '');
+    else if (re.test(head)) head = head.replace(re, (x, a, b, c) => a + v + c);
+    else head += ' ' + n + '="' + v + '"';
+    return head + m[2] + m[3];
+  };
+  const indent = l => /^\s*/.exec(l)[0];
+
+  /* ----- small UI helpers ----- */
+  const seg = (items, cur, on) => {
+    const s = el('div', 'seg');
+    items.forEach(([lab, val]) => {
+      const b = el('button', '', lab); b.type = 'button';
+      b.setAttribute('aria-pressed', String(String(cur).toLowerCase() === val));
+      b.addEventListener('click', () => on(val));
+      s.appendChild(b);
+    });
+    return s;
+  };
+  const num = (val, on, min, max) => {
+    const i = el('input'); i.type = 'number'; i.step = 'any'; if (min != null) i.min = min; if (max != null) i.max = max;
+    i.value = val == null ? '' : val;
+    i.addEventListener('change', () => { if (i.value !== '' || on.allowEmpty) on(i.value); });
+    return i;
+  };
+  const chk = (val, on) => { const i = el('input'); i.type = 'checkbox'; i.checked = !!val; i.addEventListener('change', () => on(i.checked)); return i; };
+  const sel1 = (opts, cur, on) => { const s = el('select'); opts.forEach(o => { const x = el('option', '', o); x.value = o; s.appendChild(x); }); s.value = cur; s.addEventListener('change', () => on(s.value)); return s; };
+  const panel = (title, hint) => {
+    box.replaceChildren();
+    const head = el('div', 'sbh');
+    head.appendChild(el('b', '', title));
+    const hb = el('span', 'sbb');
+    const undo = el('button', 'btn sm', 'Undo'); undo.type = 'button'; undo.addEventListener('click', () => { repxUndo(); });
+    const close = el('button', 'btn sm', 'Close'); close.type = 'button'; close.addEventListener('click', () => { sel = null; hide(); });
+    hb.append(undo, close); head.appendChild(hb); box.appendChild(head);
+    if (hint) box.appendChild(el('p', 'muted', hint));
+    const g = el('div', 'sbg'); box.appendChild(g);
+    const add = (lab, ctl, wide) => { const l = el('label', wide ? 'wide' : '', lab); l.appendChild(ctl); g.appendChild(l); return ctl; };
+    box.hidden = false; owned = true;
+    return add;
+  };
+  const hide = () => { if (owned) { box.hidden = true; owned = false; } };
+
+  /* ================= POS Commands ================= */
+  const pName = l => { const m = /<Command\b[^>]*\bname\s*=\s*"([^"]*)"/i.exec(l || ''); return m ? m[1].toLowerCase() : ''; };
+  const pBoundary = l => /<\/Command>|<\/?Commands\b/i.test(l) || (/<Command\b[^>]*\bname\s*=\s*"loop"/i.test(l) && !/\/>\s*$/.test(l));
+  const pFlush = l => {
+    const n = pName(l);
+    if (['linefeed', 'cutpaper', 'reset', 'printimagedefined', 'printbarcodeimage'].includes(n)) return true;
+    if (n === 'printstring' || n === 'printmoney') { const lf = attrOf(l, 'LineFeed'); return lf == null || !/^(no|false|0)$/i.test(lf); }
+    return false;
+  };
+  const pGroup = (L, i) => {
+    let s = i; for (let j = i - 1; j >= 0; j--) { if (pFlush(L[j]) || pBoundary(L[j])) break; s = j; }
+    let e = i; if (!pFlush(L[i])) for (let j = i + 1; j < L.length; j++) { if (pBoundary(L[j])) break; e = j; if (pFlush(L[j])) break; }
+    return [s, e];
+  };
+  const pVal = (L, name, attr, from, def) => {
+    for (let j = from; j >= 0; j--) { const n = pName(L[j]); if (n === 'reset') return def; if (n === name) { const v = attrOf(L[j], attr); if (v != null) return v; } }
+    return def;
+  };
+  const POSN = { sethalign: 'SetHAlign', setcharsize: 'SetCharSize', setfont: 'SetFont' };
+  /* set a stateful command for the group holding line i, then put the old state back after it */
+  const pState = (name, attrs, defs) => {
+    const L = lines(), i = sel.ln - 1, [s, e] = pGroup(L, i);
+    const prev = {}; Object.keys(attrs).forEach(a => { prev[a] = pVal(L, name, a, s - 1, defs[a]); });
+    let j = -1; for (let k = s; k <= i; k++) if (pName(L[k]) === name) j = k;
+    const mk = o => indent(L[s]) + '<Command name="' + POSN[name] + '" ' + Object.keys(o).map(a => a + '="' + o[a] + '"').join(' ') + '/>';
+    let add = 0;
+    const nxt = L[e + 1];
+    let later = false;
+    for (let k = e + 1; k < L.length; k++) { const nn = pName(L[k]); if (nn === name) { later = true; break; } if (['printstring', 'printmoney', 'printimagedefined', 'printbarcodeimage', 'reset'].includes(nn) || pBoundary(L[k])) break; }
+    if (!later) L.splice(e + 1, 0, mk(prev));
+    if (j >= 0) Object.keys(attrs).forEach(a => { L[j] = setAttr(L[j], a, attrs[a]); });
+    else { L.splice(s, 0, mk(attrs)); add = 1; }
+    commit(L, sel.ln + add);
+  };
+  const posPanel = () => {
+    const L = lines(), i = sel.ln - 1, l = L[i], n = pName(l);
+    if (!n) { hide(); return; }
+    const add = panel('POS command: ' + (attrOf(l, 'name') || n));
+    const printish = ['printstring', 'printmoney', 'printimagedefined', 'printbarcodeimage'].includes(n);
+    if (printish || n === 'sethalign') {
+      const cur = (pVal(L, 'sethalign', 'Align', i, 'Left') || 'Left').toLowerCase()[0];
+      const f = v => n === 'sethalign' ? patchLine(i, 'Align', { l: 'Left', c: 'Center', r: 'Right' }[v]) : pState('sethalign', { Align: { l: 'Left', c: 'Center', r: 'Right' }[v] }, { Align: 'Left' });
+      add('Line alignment', seg(AL3, cur, f), true);
+    }
+    if (n === 'printstring' || n === 'printmoney' || n === 'setcharsize') {
+      const X = pVal(L, 'setcharsize', 'X', i, '1'), Y = pVal(L, 'setcharsize', 'Y', i, '1');
+      const f = (x, y) => n === 'setcharsize' ? patchLine(i, 'X', x, 'Y', y) : pState('setcharsize', { X: x, Y: y }, { X: '1', Y: '1' });
+      let xi, yi; xi = add('Width x (1-8)', num(X, () => f(clampN(xi.value), clampN(yi.value)), 1, 8)); yi = add('Height x (1-8)', num(Y, () => f(clampN(xi.value), clampN(yi.value)), 1, 8));
+    }
+    if (n === 'printstring' || n === 'printmoney' || n === 'setfont') {
+      const cur = pVal(L, 'setfont', 'Font', i, 'Large');
+      add('Font', sel1(['Small', 'Medium', 'Large'], /^s/i.test(cur) ? 'Small' : /^m/i.test(cur) ? 'Medium' : 'Large', v => n === 'setfont' ? patchLine(i, 'Font', v) : pState('setfont', { Font: v }, { Font: 'Large' })));
+    }
+    if (n === 'printstring' || n === 'printmoney') {
+      const fl = num(attrOf(l, 'FixedLen') || '', () => {}, 0, 200); fl.placeholder = 'auto';
+      fl.addEventListener('change', () => patchLine(i, 'FixedLen', fl.value === '' || +fl.value <= 0 ? '' : String(Math.round(+fl.value))));
+      add('Field width (characters)', fl);
+      add('Pad on left (numbers)', chk(/^true$/i.test(attrOf(l, 'FillOnLeft') || ''), v => patchLine(i, 'FillOnLeft', v ? 'true' : '')));
+    }
+    if (n === 'printbarcodeimage') {
+      add('Barcode width (dots)', num(attrOf(l, 'Width') || 400, v => patchLine(i, 'Width', v)));
+      add('Barcode height (dots)', num(attrOf(l, 'Height') || 100, v => patchLine(i, 'Height', v)));
+      add('Show number', chk(/^true$/i.test(attrOf(l, 'IncludeLabel') || ''), v => patchLine(i, 'IncludeLabel', v ? 'true' : 'false')));
+    }
+    if (n === 'setleftmargin') add('Left margin (dots)', num(attrOf(l, 'Margin') || 0, v => patchLine(i, 'Margin', v)));
+    if (n === 'setposition') add('Position X (dots)', num(attrOf(l, 'X') || 0, v => patchLine(i, 'X', v)));
+    if (n === 'linefeed') add('Blank lines', num(attrOf(l, 'Line') || 1, v => patchLine(i, 'Line', v)));
+  };
+  const clampN = v => String(Math.max(1, Math.min(8, Math.round(+v) || 1)));
+  const patchLine = (i, ...kv) => {
+    const L = lines();
+    for (let k = 0; k < kv.length; k += 2) L[i] = setAttr(L[i], kv[k], kv[k + 1]);
+    commit(L);
+  };
+
+  /* ================= ePOS-Print ================= */
+  const eTag = l => { const m = /^\s*<([\w:-]+)/.exec(l || ''); return m ? m[1].toLowerCase() : ''; };
+  const eVal = (L, attr, from, def) => { for (let j = from; j >= 0; j--) if (eTag(L[j]) === 'text') { const v = attrOf(L[j], attr); if (v != null) return v; } return def; };
+  const eDefs = { align: 'left', width: '1', height: '1', em: 'false', ul: 'false', reverse: 'false' };
+  const eSet = (attr, val) => {
+    const L = lines(), i = sel.ln - 1, tag = eTag(L[i]);
+    const prev = eVal(L, attr, i - 1, eDefs[attr]);
+    if (tag === 'text') {
+      L[i] = setAttr(L[i], attr, val);
+      if (!/\/>\s*$/.test(L[i])) for (let j = i + 1; j < L.length; j++) if (eTag(L[j]) === 'text') { if (attrOf(L[j], attr) == null) L[j] = setAttr(L[j], attr, prev); break; }
+      commit(L);
+    } else if (attr === 'align') {
+      const bare = x => /^\s*<text\s+align="[^"]*"\s*\/>\s*$/i.test(x || '');
+      let add = 0;
+      if (bare(L[i + 1])) L[i + 1] = setAttr(L[i + 1], 'align', prev); else L.splice(i + 1, 0, indent(L[i]) + '<text align="' + prev + '"/>');
+      if (bare(L[i - 1])) L[i - 1] = setAttr(L[i - 1], 'align', val); else { L.splice(i, 0, indent(L[i]) + '<text align="' + val + '"/>'); add = 1; }
+      commit(L, sel.ln + add);
+    }
+  };
+  const eposPanel = () => {
+    const L = lines(), i = sel.ln - 1, l = L[i], tag = eTag(l);
+    if (!['text', 'barcode', 'symbol', 'logo', 'image', 'feed', 'hline', 'cut'].includes(tag)) { hide(); return; }
+    const add = panel('ePOS <' + tag + '>');
+    if (['text', 'barcode', 'symbol', 'logo', 'image'].includes(tag)) add('Line alignment', seg(AL3.map(a => [a[0], a[0].toLowerCase()]), eVal(L, 'align', i, 'left'), v => eSet('align', v)), true);
+    if (tag === 'text') {
+      add('Width x (1-8)', num(eVal(L, 'width', i, '1'), v => eSet('width', clampN(v)), 1, 8));
+      add('Height x (1-8)', num(eVal(L, 'height', i, '1'), v => eSet('height', clampN(v)), 1, 8));
+      add('Bold', chk(/^(true|1)$/i.test(eVal(L, 'em', i, 'false')), v => eSet('em', v ? 'true' : 'false')));
+      add('Underline', chk(/^(true|1)$/i.test(eVal(L, 'ul', i, 'false')), v => eSet('ul', v ? 'true' : 'false')));
+      add('Reverse', chk(/^(true|1)$/i.test(eVal(L, 'reverse', i, 'false')), v => eSet('reverse', v ? 'true' : 'false')));
+    }
+    if (tag === 'barcode') { add('Height (dots)', num(attrOf(l, 'height') || 48, v => patchLine(i, 'height', v))); add('Module width (2-6)', num(attrOf(l, 'width') || 2, v => patchLine(i, 'width', v), 2, 6)); }
+    if (tag === 'symbol') add('Module size', num(attrOf(l, 'size') || 4, v => patchLine(i, 'size', v)));
+    if (tag === 'feed') add('Blank lines', num(attrOf(l, 'line') || 1, v => patchLine(i, 'line', v)));
+  };
+
+  /* ================= raw ESC/POS text format ({ESC}a{0x01}) ================= */
+  const hx = n => '{0x' + (n & 255).toString(16).toUpperCase().padStart(2, '0') + '}';
+  const RX = { a: /\{ESC\}a\{0x([0-9a-fA-F]{1,2})\}/, e: /\{ESC\}E\{0x([0-9a-fA-F]{1,2})\}/, s: /\{GS\}!\{0x([0-9a-fA-F]{1,2})\}/ };
+  const TK = { a: '{ESC}a', e: '{ESC}E', s: '{GS}!' };
+  const prnVal = (L, k, from, def) => { for (let j = from; j >= 0; j--) { const m = RX[k].exec(L[j]); if (m) { let r = null, mm; const re = new RegExp(RX[k].source, 'g'); while ((mm = re.exec(L[j]))) r = parseInt(mm[1], 16); return r; } } return def; };
+  const prnSet = (k, v) => {
+    const L = lines(), i = sel.ln - 1, prev = prnVal(L, k, i - 1, 0);
+    const startsWith = x => new RegExp('^' + RX[k].source).test(x || '');
+    if (RX[k].test(L[i])) L[i] = L[i].replace(RX[k], TK[k] + hx(v)); else L[i] = TK[k] + hx(v) + L[i];
+    if (i + 1 < L.length && L[i + 1].trim() !== '' && !startsWith(L[i + 1])) L[i + 1] = TK[k] + hx(prev) + L[i + 1];
+    commit(L);
+  };
+  const prnPanel = () => {
+    const L = lines(), i = sel.ln - 1, l = L[i];
+    const add = panel('Printer line ' + sel.ln);
+    const a = prnVal(L, 'a', i, 0) & 3;
+    add('Line alignment', seg(AL3, 'lcr'[a] || 'l', v => prnSet('a', 'lcr'.indexOf(v))), true);
+    const s = prnVal(L, 's', i, 0);
+    let wi, hi;
+    const f = () => prnSet('s', (((+wi.value || 1) - 1) & 7) << 4 | (((+hi.value || 1) - 1) & 7));
+    wi = add('Width x (1-8)', num((s >> 4 & 7) + 1, f, 1, 8)); hi = add('Height x (1-8)', num((s & 7) + 1, f, 1, 8));
+    add('Bold', chk(prnVal(L, 'e', i, 0) & 1, v => prnSet('e', v ? 1 : 0)));
+    if (/\{GS\}k/.test(l)) {
+      const gv = (re, d) => { const m = re.exec(l); return m ? parseInt(m[1], 16) : d; };
+      const put = (re, tok, v, lo, hi2) => { v = Math.max(lo, Math.min(hi2, Math.round(+v) || lo)); const LL = lines(); LL[i] = re.test(LL[i]) ? LL[i].replace(re, tok + hx(v)) : tok + hx(v) + LL[i]; commit(LL); };
+      add('Barcode height (1-255)', num(gv(/\{GS\}h\{0x([0-9a-fA-F]{1,2})\}/, 162), v => put(/\{GS\}h\{0x[0-9a-fA-F]{1,2}\}/, '{GS}h', v, 1, 255), 1, 255));
+      add('Barcode width (2-6)', num(gv(/\{GS\}w\{0x([0-9a-fA-F]{1,2})\}/, 3), v => put(/\{GS\}w\{0x[0-9a-fA-F]{1,2}\}/, '{GS}w', v, 2, 6), 2, 6));
+    }
+  };
+
+  /* ================= ZPL and TEXT/1DB labels ================= */
+  const zNodes = () => [...desk.querySelectorAll('.zlabel > *')].filter(n => n._z && n._z.ln);
+  const zNode = () => { if (!sel) return null; const a = zNodes().filter(n => n._z.ln === sel.ln); return a[sel.idx] || a[0] || null; };
+  const zAlign = side => {
+    const n = zNode(); if (!n) return;
+    const z = n._z, lab = n.closest('.zlabel'), lr = lab.getBoundingClientRect(), nr = n.getBoundingClientRect();
+    const sc = lr.width / n._pw, w = nr.width / sc, cur = (nr.left - lr.left) / sc;
+    const tgt = side === 'l' ? 0 : side === 'c' ? (n._pw - w) / 2 : n._pw - w;
+    zplApply({ e: z, size: false, ux: Math.round(tgt - cur), uy: 0 });
+    refresh();
+  };
+  const zPanel = () => {
+    const n = zNode();
+    if (!n) { hide(); return; }
+    const z = n._z, lbl = isLblSrc(ta.value);
+    const kindName = { txt: 'Text', bar: 'Barcode', qr: 'QR code', box: 'Box or line', circ: 'Circle', stock: 'Stock colour area', unk: 'Barcode' }[z.k] || 'Field';
+    const add = panel(kindName + ' on line ' + z.ln, z.ext ? 'This colour area is only shown in the preview. Drag it, or use its corner handle.' : '');
+    if (z.ext) return;
+    const lab = n.closest('.zlabel'), sc = lab.getBoundingClientRect().width / n._pw;
+    if (z.pos) {
+      add('Align to label', seg(AL3, '', v => zAlign(v)), true);
+      add('X (dots)', num(z.pos.sx, v => { zplApply({ e: z, size: false, ux: +v - z.pos.sx, uy: 0 }); refresh(); }));
+      add('Y (dots)', num(z.pos.sy, v => { zplApply({ e: z, size: false, ux: 0, uy: +v - z.pos.sy }); refresh(); }));
+    }
+    if (z.k === 'txt') {
+      if (lbl) {
+        if (z.mpos) { let a, b; const f = () => patchRange(z.mpos.off, z.mpos.len, Math.max(1, Math.round(+a.value) || 1) + ',' + Math.max(1, Math.round(+b.value) || 1)); a = add('Width multiplier', num(z.mx, f, 1, 20)); b = add('Height multiplier', num(z.my, f, 1, 20)); }
+      } else if (z.apos) {
+        let a, b; const f = () => patchRange(z.apos.off, z.apos.len, z.apos.head + ',' + Math.max(1, Math.round(+a.value) || 1) + ',' + Math.max(0, Math.round(+b.value) || 0));
+        a = add('Text height (dots)', num(z.h, f, 1)); b = add('Text width (dots, 0 = auto)', num(z.w, f, 0));
+      } else add('Text size', el('span', 'muted', 'Set by ^CF. Add an ^A command to size this field.'), true);
+    }
+    if (z.k === 'bar') {
+      if (z.hpos) add('Bar height (dots)', num(z.h, v => patchRange(z.hpos.off, z.hpos.len, String(Math.max(5, Math.round(+v) || 5))), 5));
+      if (z.bwpos) add('Bar width (1-10)', num(z.bw, v => patchRange(z.bwpos.off, z.bwpos.len, String(Math.max(1, Math.min(10, Math.round(+v) || 2)))), 1, 10));
+    }
+    if (z.k === 'box' && z.spos) {
+      add('Width (dots)', num(z.w, v => { zplApply({ e: z, size: true, ux: +v - z.w, uy: 0 }); refresh(); }, 1));
+      add('Height (dots)', num(z.h, v => { zplApply({ e: z, size: true, ux: 0, uy: +v - z.h }); refresh(); }, 1));
+    }
+  };
+
+  /* ================= wiring ================= */
+  function refresh() {
+    if (repxActive || !sel) { if (!repxActive) hide(); return; }
+    const k = srcKind();
+    if (k !== sel.kind || k === 'other') { sel = null; hide(); return; }
+    if (sel.ln > lines().length) { sel = null; hide(); return; }
+    if (k === 'pos') posPanel(); else if (k === 'epos') eposPanel(); else if (k === 'prn') prnPanel(); else zPanel();
+  }
+  desk.addEventListener('click', ev => {
+    if (repxActive) return;
+    const k = srcKind();
+    if (k === 'other') { sel = null; hide(); return; }
+    if (k === 'zpl' || k === 'lbl') {
+      const n = ev.target.closest && ev.target.closest('.zlabel > *');
+      if (!n || !n._z || !n._z.ln) return;
+      const same = zNodes().filter(x => x._z.ln === n._z.ln);
+      sel = { kind: k, ln: n._z.ln, idx: Math.max(0, same.indexOf(n)) };
+    } else {
+      const t = ev.target.closest && ev.target.closest('[data-ln]');
+      if (!t) return;
+      sel = { kind: k, ln: +t.dataset.ln, idx: 0 };
+    }
+    refresh();
+  });
+  /* a click inside the editor on a line also picks that line */
+  ta.addEventListener('click', () => { if (sel && !repxActive) { const n = ta.value.slice(0, ta.selectionStart).split('\n').length; if (n !== sel.ln && sel.kind !== 'zpl' && sel.kind !== 'lbl') { sel.ln = n; refresh(); } } });
+  let rt = 0; ta.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(() => { if (sel && !box.contains(document.activeElement)) refresh(); }, 400); });
+  const clear = () => { sel = null; hide(); };
+  document.addEventListener('change', e => { if (e.target && (e.target.id === 'sample' || e.target.id === 'file')) clear(); }, true);
+  window.__lb = { refresh, clear, get sel() { return sel; }, select: (kind, ln, idx) => { sel = { kind, ln, idx: idx || 0 }; refresh(); } };
+})();
+/* <<<p13 */
 
 /* Start with the last session, or the POS Commands sample */
 let startXml = SAMPLES.pos(), startJson = POS_DATA;
