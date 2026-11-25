@@ -336,6 +336,31 @@ body{padding-block:0;padding-inline:0}
 .penote.bad{color:var(--err)}
 .pehelp{margin:0;font-size:12px;color:var(--muted)}
 @media print{.pemenu,.bar,.help{display:none!important}}
+
+/* ===== Rulers and guide lines ===== */
+:root{--guide:#d4237a;--ruler:#e3e9e7}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--guide:#ff6fb1;--ruler:#101918}}
+:root[data-theme="dark"]{--guide:#ff6fb1;--ruler:#101918}
+.gbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--gutter)}
+.gbar .btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.ghint{font-size:12px;color:var(--muted);flex:1 1 220px;min-width:0}
+.ghint.ok{color:var(--ok)}.ghint.bad{color:var(--err)}
+.deskwrap{flex:1;min-height:0;display:grid;grid-template-columns:22px minmax(0,1fr);grid-template-rows:22px minmax(0,1fr);position:relative;background:var(--ruler)}
+.deskwrap>.desk{grid-area:2/2;min-height:0;min-width:0}
+.rulx{grid-area:1/2;width:100%;height:22px;cursor:s-resize;touch-action:none;display:block;border-bottom:1px solid var(--line)}
+.ruly{grid-area:2/1;width:22px;height:100%;cursor:e-resize;touch-action:none;display:block;border-right:1px solid var(--line)}
+.corner{grid-area:1/1;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.gl{grid-area:2/2;position:relative;pointer-events:none;overflow:hidden;z-index:6}
+.gv,.gh{position:absolute;pointer-events:auto;touch-action:none}
+.gv{top:0;bottom:0;width:11px;margin-left:-5px;cursor:col-resize}
+.gh{left:0;right:0;height:11px;margin-top:-5px;cursor:row-resize}
+.gv::before{content:"";position:absolute;left:5px;top:0;bottom:0;border-left:1px dashed var(--guide)}
+.gh::before{content:"";position:absolute;top:5px;left:0;right:0;border-top:1px dashed var(--guide)}
+.gv.hit::before,.gh.hit::before{border-style:solid;border-width:2px}
+.gtag{position:absolute;pointer-events:none;font:600 10.5px/1 var(--mono);color:#fff;background:var(--guide);padding:3px 5px;border-radius:3px;white-space:nowrap;z-index:7}
+.deskwrap.noguides{grid-template-columns:0 minmax(0,1fr);grid-template-rows:0 minmax(0,1fr)}
+.deskwrap.noguides .rulx,.deskwrap.noguides .ruly,.deskwrap.noguides .corner,.deskwrap.noguides .gl{display:none}
+@media print{.gbar,.rulx,.ruly,.corner,.gl{display:none!important}}
 </style>
 <div class="app">
   <header class="bar">
@@ -443,7 +468,21 @@ body{padding-block:0;padding-inline:0}
         <button id="zundo" type="button">Undo</button>
         <span class="zhint">Drag any field in the preview to move it. Arrow keys nudge (Shift = 10). Boxes and the colour area have a corner handle to resize.</span>
       </div>
-      <div class="desk" id="desk"></div>
+      <div class="gbar" id="gbar" role="group" aria-label="Guides">
+        <button type="button" class="btn sm" id="gshow" aria-pressed="true" title="Show or hide rulers and guide lines">Guides</button>
+        <button type="button" class="btn sm" id="gsnap" aria-pressed="true" title="Snap dragged fields to guide lines">Snap</button>
+        <button type="button" class="btn sm" id="gfit" title="Move the selected field to the nearest guide lines">Align to guides</button>
+        <button type="button" class="btn sm" id="gsel" title="Add guide lines at the edges of the selected field">Guides from selection</button>
+        <button type="button" class="btn sm" id="gclr">Clear guides</button>
+        <span class="ghint" id="gmsg">Drag from the top or left ruler to place a guide. Double-click a guide to remove it.</span>
+      </div>
+      <div class="deskwrap" id="deskwrap">
+        <div class="corner" id="gcorner"></div>
+        <canvas class="rulx" id="rulx" aria-label="Horizontal ruler in millimetres"></canvas>
+        <canvas class="ruly" id="ruly" aria-label="Vertical ruler in millimetres"></canvas>
+        <div class="desk" id="desk"></div>
+        <div class="gl" id="gl"></div>
+      </div>
       <div class="selbar" id="selbar" hidden></div>
       <div class="warns" id="warns" hidden></div>
     </section>
@@ -2876,13 +2915,14 @@ desk.addEventListener('pointerdown', ev => {
   if (ev.button !== 0) return;
   const t = dragTarget(ev);
   if (!t) return;
-  drag = Object.assign(t, { x0: ev.clientX, y0: ev.clientY, moved: false, ux: 0, uy: 0 });
+  drag = Object.assign(t, { x0: ev.clientX, y0: ev.clientY, moved: false, ux: 0, uy: 0, r0: t.node.getBoundingClientRect() });
   ev.preventDefault();
 });
 window.addEventListener('pointermove', ev => {
   if (!drag) return;
-  const dx = ev.clientX - drag.x0, dy = ev.clientY - drag.y0;
+  let dx = ev.clientX - drag.x0, dy = ev.clientY - drag.y0;
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  if (window.__gd) { const sn = drag.size ? window.__gd.snapSize(drag.r0, dx, dy) : window.__gd.snapMove(drag.r0, dx, dy); dx = sn.dx; dy = sn.dy; }
   drag.moved = true;
   document.body.classList.add('dragging');
   drag.sc = drag.scale() || drag.sc;
@@ -2901,6 +2941,7 @@ window.addEventListener('pointermove', ev => {
 });
 window.addEventListener('pointerup', () => {
   const d = drag; drag = null;
+  if (window.__gd) window.__gd.clear();
   document.body.classList.remove('dragging');
   if (dragTipEl) dragTipEl.hidden = true;
   if (!d || !d.moved) return;
@@ -3574,9 +3615,222 @@ $('prn').addEventListener('click', () => window.print());
   let rt = 0; ta.addEventListener('input', () => { clearTimeout(rt); rt = setTimeout(() => { if (sel && !box.contains(document.activeElement)) refresh(); }, 400); });
   const clear = () => { sel = null; hide(); };
   document.addEventListener('change', e => { if (e.target && (e.target.id === 'sample' || e.target.id === 'file')) clear(); }, true);
-  window.__lb = { refresh, clear, get sel() { return sel; }, select: (kind, ln, idx) => { sel = { kind, ln, idx: idx || 0 }; refresh(); } };
+  const alignSel = v => {
+    if (!sel || repxActive) return false;
+    if (sel.kind === 'pos') { const n = pName(lines()[sel.ln - 1]); if (!['printstring', 'printmoney', 'printimagedefined', 'printbarcodeimage'].includes(n)) return false; pState('sethalign', { Align: { l: 'Left', c: 'Center', r: 'Right' }[v] }, { Align: 'Left' }); return true; }
+    if (sel.kind === 'epos') { eSet('align', { l: 'left', c: 'center', r: 'right' }[v]); return true; }
+    if (sel.kind === 'prn') { prnSet('a', 'lcr'.indexOf(v)); return true; }
+    return false;
+  };
+  window.__lb = { refresh, clear, alignSel, get sel() { return sel; }, select: (kind, ln, idx) => { sel = { kind, ln, idx: idx || 0 }; refresh(); } };
 })();
 /* <<<p13 */
+/* >>>p14 rulers, guide lines and snapping */
+(function () {
+  const wrap = $('deskwrap'), gl = $('gl'), rx = $('rulx'), ry = $('ruly'), msg = $('gmsg');
+  const KEY = 'billxml.guides.v1', PXMM = 3.7795;
+  let G = { v: [], h: [] }, gkind = '', show = true, snapOn = true, raf = 0, act = null;
+  const store = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } };
+  const save = () => { try { const s = store(); s[gkind] = G; s._show = show; s._snap = snapOn; localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage may be unavailable */ } };
+  const say = (t, c) => { msg.textContent = t; msg.className = 'ghint' + (c ? ' ' + c : ''); };
+  const kindNow = () => repxActive ? 'repx' : isLblSrc(ta.value) ? 'lbl' : isZplSrc(ta.value) ? 'zpl' : isPrnSrc(ta.value) ? 'prn' : /<Commands\b/i.test(ta.value) ? 'pos' : /<epos-print\b/i.test(ta.value) ? 'epos' : 'other';
+  const paper = () => desk.querySelector('.slip,.a4,.rp,.zlabel');
+  const zoom = () => parseFloat(getComputedStyle(desk).getPropertyValue('--zoom')) || 1;
+  const load = () => {
+    const k = kindNow(), s = store();
+    if (k !== gkind) { gkind = k; const g = s[k]; G = g && Array.isArray(g.v) && Array.isArray(g.h) ? { v: g.v.slice(0, 40), h: g.h.slice(0, 40) } : { v: [], h: [] }; }
+    if (typeof s._show === 'boolean') show = s._show;
+    if (typeof s._snap === 'boolean') snapOn = s._snap;
+  };
+  const dpp = () => { const n = desk.querySelector('.zlabel > *'); const P = paper(); return n && n._pw && P ? n._pw / (P.getBoundingClientRect().width / zoom()) : 0; };
+  const fmt = px => { const mm = px / PXMM, d = dpp(); return mm.toFixed(1) + ' mm' + (d ? ' · ' + Math.round(px * d) + ' dots' : ''); };
+
+  /* ----- screen geometry of the guides ----- */
+  const dims = () => { const P = paper(); if (!P) return null; const r = P.getBoundingClientRect(), d = desk.getBoundingClientRect(); return { r, d, z: zoom() }; };
+  const screen = () => { const m = dims(); if (!m) return { v: [], h: [] }; return { v: G.v.map(p => m.r.left + p * m.z), h: G.h.map(p => m.r.top + p * m.z) }; };
+
+  function snapAxis(edges, guides, d, thr) {
+    let best = null;
+    edges.forEach(e => guides.forEach(g => { const diff = g - (e + d); if (Math.abs(diff) <= thr && (!best || Math.abs(diff) < Math.abs(best.diff))) best = { diff, g }; }));
+    return best;
+  }
+  function snapWith(edgesX, edgesY, dx, dy, thr) {
+    if (!show || !snapOn || (!G.v.length && !G.h.length)) { mark([], []); return { dx, dy }; }
+    const s = screen(), bx = snapAxis(edgesX, s.v, dx, thr), by = snapAxis(edgesY, s.h, dy, thr);
+    if (bx) dx += bx.diff; if (by) dy += by.diff;
+    mark(bx ? [bx.g] : [], by ? [by.g] : []);
+    return { dx, dy };
+  }
+  const snapMove = (r0, dx, dy) => snapWith([r0.left, (r0.left + r0.right) / 2, r0.right], [r0.top, (r0.top + r0.bottom) / 2, r0.bottom], dx, dy, 6);
+  const snapSize = (r0, dx, dy) => snapWith([r0.right], [r0.bottom], dx, dy, 6);
+  function mark(xs, ys) {
+    const m = dims(); if (!m) return;
+    gl.querySelectorAll('.gv').forEach(n => n.classList.toggle('hit', xs.some(x => Math.abs(x - (+n.dataset.s)) < 0.6)));
+    gl.querySelectorAll('.gh').forEach(n => n.classList.toggle('hit', ys.some(y => Math.abs(y - (+n.dataset.s)) < 0.6)));
+  }
+  const clearMark = () => mark([], []);
+
+  /* ----- drawing ----- */
+  function ruler(cv, horiz) {
+    const d = desk.getBoundingClientRect(), len = Math.max(0, Math.round(horiz ? d.width : d.height)), th = 22, dpr = window.devicePixelRatio || 1;
+    cv.width = (horiz ? len : th) * dpr; cv.height = (horiz ? th : len) * dpr;
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cs = getComputedStyle(wrap), fg = cs.getPropertyValue('--muted').trim() || '#666', ln = cs.getPropertyValue('--fg').trim() || '#000';
+    c.clearRect(0, 0, horiz ? len : th, horiz ? th : len);
+    const m = dims(); if (!m) return;
+    const o = horiz ? m.r.left - m.d.left : m.r.top - m.d.top, pm = PXMM * m.z;
+    const minor = [1, 2, 5, 10, 20, 50].find(s => s * pm >= 5) || 100, major = [10, 20, 50, 100].find(s => s * pm >= 42) || 200;
+    c.strokeStyle = fg; c.fillStyle = fg; c.lineWidth = 1; c.font = '10px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif');
+    c.textBaseline = 'top';
+    const a = Math.floor((0 - o) / pm / minor) * minor, b = Math.ceil(((horiz ? len : len) - o) / pm / minor) * minor;
+    c.beginPath();
+    for (let mm = a; mm <= b; mm += minor) {
+      const p = Math.round(o + mm * pm) + 0.5, big = mm % major === 0, mid = mm % (major / 2) === 0;
+      const h = big ? 14 : mid ? 9 : 5;
+      if (horiz) { c.moveTo(p, th); c.lineTo(p, th - h); } else { c.moveTo(th, p); c.lineTo(th - h, p); }
+    }
+    c.stroke();
+    for (let mm = Math.ceil(a / major) * major; mm <= b; mm += major) {
+      const p = o + mm * pm;
+      if (horiz) c.fillText(String(mm), p + 3, 2);
+      else { c.save(); c.translate(2, p + 3); c.rotate(-Math.PI / 2); c.textBaseline = 'top'; c.textAlign = 'right'; c.fillText(String(mm), 0, 0); c.restore(); }
+    }
+    c.strokeStyle = ln; c.globalAlpha = .35;
+    c.beginPath(); if (horiz) { c.moveTo(o + .5, 0); c.lineTo(o + .5, th); } else { c.moveTo(0, o + .5); c.lineTo(th, o + .5); } c.stroke(); c.globalAlpha = 1;
+  }
+  function draw() {
+    raf = 0;
+    wrap.classList.toggle('noguides', !show);
+    $('gshow').setAttribute('aria-pressed', String(show)); $('gsnap').setAttribute('aria-pressed', String(snapOn));
+    if (!show) return;
+    ruler(rx, true); ruler(ry, false);
+    const m = dims(), keep = act && act.line ? act.line : null;
+    gl.replaceChildren();
+    if (!m) return;
+    const gd = gl.getBoundingClientRect();
+    const add = (o, p, i) => {
+      const s = o === 'v' ? m.r.left + p * m.z : m.r.top + p * m.z;
+      const d = el('div', o === 'v' ? 'gv' : 'gh'); d.dataset.s = s; d.dataset.i = i; d.dataset.o = o;
+      d.title = fmt(p) + '. Drag to move, drag onto the ruler or double-click to remove.';
+      if (o === 'v') d.style.left = (s - gd.left) + 'px'; else d.style.top = (s - gd.top) + 'px';
+      d.addEventListener('pointerdown', e => startMove(e, o, i));
+      d.addEventListener('dblclick', () => { G[o].splice(i, 1); save(); sched(); });
+      gl.appendChild(d);
+    };
+    G.v.forEach((p, i) => add('v', p, i)); G.h.forEach((p, i) => add('h', p, i));
+  }
+  const sched = () => { if (!raf) raf = requestAnimationFrame(draw); };
+
+  /* ----- creating, moving and removing guides ----- */
+  function tagAt(o, s, text) {
+    let t = gl.querySelector('.gtag');
+    if (!t) { t = el('div', 'gtag'); gl.appendChild(t); }
+    const gd = gl.getBoundingClientRect();
+    t.textContent = text;
+    t.style.left = (o === 'v' ? s - gd.left + 8 : 8) + 'px'; t.style.top = (o === 'h' ? s - gd.top + 8 : 8) + 'px';
+  }
+  const rmTag = () => { const t = gl.querySelector('.gtag'); if (t) t.remove(); };
+  const inside = (x, y) => { const d = desk.getBoundingClientRect(); return x >= d.left && x <= d.right && y >= d.top && y <= d.bottom; };
+  function run(o, cur, getPos, done) {
+    let line = el('div', o === 'v' ? 'gv hit' : 'gh hit'); line.style.pointerEvents = 'none'; gl.appendChild(line);
+    const mv = e => {
+      const m = dims(); if (!m) return;
+      const gd = gl.getBoundingClientRect();
+      let p = o === 'v' ? (e.clientX - m.r.left) / m.z : (e.clientY - m.r.top) / m.z;
+      p = Math.round(p * 2) / 2;
+      const s = o === 'v' ? m.r.left + p * m.z : m.r.top + p * m.z;
+      if (o === 'v') line.style.left = (s - gd.left) + 'px'; else line.style.top = (s - gd.top) + 'px';
+      line.style.opacity = inside(e.clientX, e.clientY) ? 1 : .35;
+      tagAt(o, s, inside(e.clientX, e.clientY) ? fmt(p) : 'Release to remove');
+      cur.p = p; cur.ok = inside(e.clientX, e.clientY); cur.x = e.clientX; cur.y = e.clientY;
+    };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); line.remove(); rmTag(); document.body.classList.remove('dragging'); done(cur); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    document.body.classList.add('dragging');
+    return mv;
+  }
+  function startNew(e, o) {
+    if (e.button !== 0 || !paper()) return;
+    e.preventDefault();
+    const mv = run(o, { p: 0, ok: false }, null, c => { if (c.ok && isFinite(c.p)) { G[o].push(c.p); save(); } sched(); });
+    mv(e);
+  }
+  let lastTap = { t: 0, o: '', i: -1 };
+  function startMove(e, o, i) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const old = G[o][i], node = e.currentTarget, x0 = e.clientX, y0 = e.clientY, t0 = Date.now();
+    node.style.visibility = 'hidden';
+    const mv = run(o, { p: old, ok: true }, null, c => {
+      const still = Math.hypot((c.x || x0) - x0, (c.y || y0) - y0) < 4;
+      if (still) {
+        if (lastTap.o === o && lastTap.i === i && t0 - lastTap.t < 450) { G[o].splice(i, 1); lastTap = { t: 0, o: '', i: -1 }; }
+        else lastTap = { t: t0, o, i };
+      } else if (c.ok && isFinite(c.p)) G[o][i] = c.p; else G[o].splice(i, 1);
+      save(); sched();
+    });
+    mv(e);
+  }
+  rx.addEventListener('pointerdown', e => startNew(e, 'h'));
+  ry.addEventListener('pointerdown', e => startNew(e, 'v'));
+
+  /* ----- toolbar ----- */
+  $('gshow').addEventListener('click', () => { show = !show; save(); sched(); });
+  $('gsnap').addEventListener('click', () => { snapOn = !snapOn; save(); sched(); say(snapOn ? 'Snap is on. Dragged fields jump to guides within 6 px.' : 'Snap is off.'); });
+  $('gclr').addEventListener('click', () => { G = { v: [], h: [] }; save(); sched(); say('All guides removed.'); });
+  const selNode = () => repxActive ? (selEid >= 0 ? desk.querySelector('.rc[data-eid="' + selEid + '"]') : null) : desk.querySelector('.zlabel .sel') || desk.querySelector('.sel');
+  $('gsel').addEventListener('click', () => {
+    const n = selNode(), m = dims();
+    if (!n || !m) { say('Click a field in the preview first.', 'bad'); return; }
+    const r = n.getBoundingClientRect(), add = (o, p) => { p = Math.round(p * 2) / 2; if (!G[o].some(q => Math.abs(q - p) < 0.5)) G[o].push(p); };
+    add('v', (r.left - m.r.left) / m.z); add('v', (r.right - m.r.left) / m.z); add('v', ((r.left + r.right) / 2 - m.r.left) / m.z);
+    add('h', (r.top - m.r.top) / m.z); add('h', (r.bottom - m.r.top) / m.z); add('h', ((r.top + r.bottom) / 2 - m.r.top) / m.z);
+    show = true; save(); sched(); say('Added guides at the edges and centre of the selected field.', 'ok');
+  });
+  $('gfit').addEventListener('click', () => {
+    const k = kindNow(), s = screen();
+    if (!s.v.length && !s.h.length) { say('Place a guide first. Drag from the top or left ruler.', 'bad'); return; }
+    if (k === 'repx' || k === 'zpl' || k === 'lbl') {
+      const n = selNode();
+      if (!n) { say('Click a field in the preview first.', 'bad'); return; }
+      const t = dragTarget({ target: n });
+      if (!t) { say('This field cannot be moved.', 'bad'); return; }
+      const r0 = n.getBoundingClientRect();
+      const bx = snapAxis([r0.left, (r0.left + r0.right) / 2, r0.right], s.v, 0, 1e9), by = snapAxis([r0.top, (r0.top + r0.bottom) / 2, r0.bottom], s.h, 0, 1e9);
+      if (!bx && !by) { say('No guide to align to.', 'bad'); return; }
+      const sc = t.scale() || t.sc;
+      t.ux = bx ? bx.diff / sc : 0; t.uy = by ? by.diff / sc : 0; t.size = false;
+      if (t.kind === 'repx') { patchAttr(t.e, 'LocationFloat', r1(t.g.x + t.ux) + ',' + r1(t.g.y + t.uy)); const i = EID.get(t.e); if (i != null) repxSelect(i); }
+      else zplApply(t);
+      say('Moved the selected field to the nearest guide.', 'ok');
+      return;
+    }
+    if (k === 'other') { say('This layout is fixed by the template.', 'bad'); return; }
+    /* receipt formats flow line by line, so a guide chooses left, centre or right */
+    const P = paper(), n = selNode();
+    if (!P) return;
+    if (!s.v.length) { say('Drag a vertical guide from the left ruler. The selected line goes left, centre or right, whichever the guide is nearest to.', 'bad'); return; }
+    if (!n || !window.__lb || !window.__lb.sel) { say('Click a line in the preview first.', 'bad'); return; }
+    const r = P.getBoundingClientRect(), cs = getComputedStyle(P), pl = parseFloat(cs.paddingLeft) || 0, pr = parseFloat(cs.paddingRight) || 0;
+    const L = r.left + pl, R = r.right - pr, anchors = { l: L, c: (L + R) / 2, r: R };
+    let best = null;
+    Object.keys(anchors).forEach(a => s.v.forEach(g => { const dd = Math.abs(g - anchors[a]); if (!best || dd < best.dd) best = { a, dd }; }));
+    if (window.__lb.alignSel(best.a)) say('Line aligned ' + ({ l: 'left', c: 'centre', r: 'right' })[best.a] + ' to the nearest guide.', 'ok');
+    else say('This line cannot be aligned. Pick a text line.', 'bad');
+  });
+
+  /* ----- redraw triggers ----- */
+  desk.addEventListener('scroll', sched, { passive: true });
+  window.addEventListener('resize', sched);
+  if (window.ResizeObserver) new ResizeObserver(sched).observe(desk);
+  new MutationObserver(() => { load(); sched(); }).observe(desk, { childList: true });
+  new MutationObserver(sched).observe(desk, { attributes: true, attributeFilter: ['style', 'class'] });
+  new MutationObserver(sched).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sched); } catch (e) { /* older browsers */ }
+  load(); sched();
+  window.__gd = { snapMove, snapSize, clear: clearMark, get G() { return G; }, screen, redraw: () => { load(); draw(); } };
+})();
+/* <<<p14 */
 
 /* Start with the last session, or the POS Commands sample */
 let startXml = SAMPLES.pos(), startJson = POS_DATA;
