@@ -384,6 +384,19 @@ body{padding-block:0;padding-inline:0}
 .colw{display:flex;align-items:center;gap:6px}.colw input[type=color]{width:42px;height:28px;padding:0;border:1px solid var(--line);border-radius:4px;background:transparent}
 .colw small{color:var(--muted)}
 @media print{.ispdf .desk{display:block}.pdfpage{break-after:page;box-shadow:none;margin:0 0 0 0!important}.pdft{display:none}.padd{display:none!important}}
+
+.pdfi{position:absolute;inset:0;z-index:1}
+.pdft{z-index:2}.pdfe{z-index:3}
+.pdfim{position:absolute;cursor:pointer;border-radius:2px;outline:1px dashed transparent}
+.pdfim:hover{outline:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.pe-image img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;user-select:none}
+.pemiss{font:12px var(--ui);color:#a00;padding:4px}
+.pband{position:absolute;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent) 20%,transparent);pointer-events:none;z-index:9}
+body.areamode .pdfpage{cursor:crosshair}
+body.areamode .pdftx,body.areamode .pdfim,body.areamode .pe{pointer-events:none}
+.padd .btn[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.pdft,.pdfi{pointer-events:none}
+.pdftx,.pdfim{pointer-events:auto}
 </style>
 <div class="app">
   <header class="bar">
@@ -488,9 +501,12 @@ body{padding-block:0;padding-inline:0}
         <button type="button" class="btn sm" id="padd-text">Add text</button>
         <button type="button" class="btn sm" id="padd-box">Add box</button>
         <button type="button" class="btn sm" id="padd-line">Add line</button>
+        <button type="button" class="btn sm" id="padd-img" title="Insert a logo or picture">Add image</button>
+        <button type="button" class="btn sm" id="padd-area" aria-pressed="false" title="Drag a rectangle to cover anything, such as a logo or stamp">Cover area</button>
+        <input type="file" id="padd-imgfile" accept="image/*" hidden>
         <button type="button" class="btn sm" id="padd-undo">Undo</button>
         <span class="muted" id="pinfo">No PDF open</span>
-        <span class="zhint">Click any text in the page to change it. Drag to move. The corner handle resizes. Use Print / Export to save the edited PDF.</span>
+        <span class="zhint">Click any text or picture (such as the logo) in the page to change it. Use Cover area for anything else. Drag to move, corner handle to resize. Use Print / Export to save the edited PDF.</span>
       </div>
       <div class="zadd" id="zadd" hidden>
         <b>Add to label</b>
@@ -3896,7 +3912,8 @@ $('prn').addEventListener('click', () => window.print());
     times: '"Times New Roman", "Liberation Serif", "Noto Serif Malayalam", serif',
     courier: '"Courier New", "Liberation Mono", monospace'
   };
-  const P = { bytes: null, name: '', doc: null, pages: [], id: 0, built: -1, rtoken: 0 };
+  const P = { bytes: null, name: '', doc: null, pages: [], id: 0, built: -1, rtoken: 0, assets: {}, aid: 0 };
+  let areaMode = false;
   let sel = -1, active = false, drag = null, lastErr = '', rasterTimer = 0;
   const bar = $('padd'), box = $('selbar');
   const say = (ok, m) => status(ok, m);
@@ -3927,9 +3944,10 @@ $('prn').addEventListener('click', () => window.print());
   function norm(e) {
     e = e && typeof e === 'object' ? e : {};
     const n = (v, d) => Number.isFinite(+v) && v !== null && v !== '' ? +v : d;
-    const t = ['text', 'rect', 'replace', 'line'].includes(e.type) ? e.type : 'text';
+    const t = ['text', 'rect', 'replace', 'line', 'image'].includes(e.type) ? e.type : 'text';
     const o = Object.assign({}, e, { type: t, page: Math.max(1, Math.round(n(e.page, 1))), x: n(e.x, 0), y: n(e.y, 0) });
     if (t === 'text' || t === 'replace') { o.text = e.text == null ? '' : String(e.text); o.size = n(e.size, 12); o.font = FONTS[e.font] ? e.font : 'helvetica'; o.bold = !!e.bold; o.color = e.color || '#000000'; o.align = ['left', 'center', 'right'].includes(e.align) ? e.align : 'left'; }
+    if (t === 'image') { o.w = n(e.w, 100); o.h = n(e.h, 60); o.fill = 'fill' in e ? e.fill : '#ffffff'; o.src = e.src || null; }
     if (t === 'rect' || t === 'replace') { o.w = n(e.w, 100); o.h = n(e.h, 20); if (!('fill' in e)) o.fill = t === 'replace' ? '#ffffff' : null; }
     if (t === 'text' && e.w != null) o.w = n(e.w, 0);
     if (t === 'rect') { o.stroke = e.stroke || null; o.sw = n(e.sw, 1); }
@@ -3973,9 +3991,27 @@ $('prn').addEventListener('click', () => window.print());
           const tx = lib.Util.transform(vp.transform, it.transform), fs = Math.hypot(tx[2], tx[3]) || 10, st = (tc.styles || {})[it.fontName] || {}, fam = (st.fontFamily || '') + ' ' + (it.fontName || '');
           items.push({ str: it.str, x: tx[4], y: tx[5] - fs * 0.86, w: it.width || fs * it.str.length * 0.5, h: fs * 1.1, size: fs, font: /mono|courier/i.test(fam) ? 'courier' : /serif|times/i.test(fam) && !/sans/i.test(fam) ? 'times' : 'helvetica', bold: /bold|black|heavy/i.test(fam) });
         });
-        pages.push({ page: pg, w: vp.width, h: vp.height, items });
+        const images = [];
+        try {
+          const O = lib.OPS, ol = await pg.getOperatorList(), U = lib.Util;
+          let m = [1, 0, 0, 1, 0, 0]; const st = [];
+          for (let q = 0; q < ol.fnArray.length; q++) {
+            const fn = ol.fnArray[q], a = ol.argsArray[q];
+            if (fn === O.save) st.push(m.slice());
+            else if (fn === O.restore) { if (st.length) m = st.pop(); }
+            else if (fn === O.transform) m = U.transform(m, a);
+            else if (fn === O.paintFormXObjectBegin) { st.push(m.slice()); if (a && a[0]) m = U.transform(m, a[0]); }
+            else if (fn === O.paintFormXObjectEnd) { if (st.length) m = st.pop(); }
+            else if (fn === O.paintImageXObject || fn === O.paintInlineImageXObject || fn === O.paintImageMaskXObject || fn === O.paintJpegXObject) {
+              const mm = U.transform(vp.transform, m), pts = [[0, 0], [1, 0], [0, 1], [1, 1]].map(p => [mm[0] * p[0] + mm[2] * p[1] + mm[4], mm[1] * p[0] + mm[3] * p[1] + mm[5]]);
+              const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+              if (w >= 4 && h >= 4 && !images.some(i => Math.abs(i.x - x) < .5 && Math.abs(i.y - y) < .5 && Math.abs(i.w - w) < .5 && Math.abs(i.h - h) < .5)) images.push({ x, y, w, h });
+            }
+          }
+        } catch (err) { /* images stay clickable through Cover area */ }
+        pages.push({ page: pg, w: vp.width, h: vp.height, items, images });
       }
-      P.bytes = bytes; P.name = name; P.doc = doc; P.pages = pages; P.id++; sel = -1;
+      P.bytes = bytes; P.name = name; P.doc = doc; P.pages = pages; P.id++; sel = -1; P.assets = {}; P.aid = 0;
       active = true;
       ta.value = ser(name, []);
       hist.length = 0;
@@ -4023,6 +4059,14 @@ $('prn').addEventListener('click', () => window.print());
       const d = el('div', 'pdfpage'); d.dataset.p = i + 1;
       d.style.width = css('w', p.w); d.style.height = css('h', p.h);
       const cv = el('canvas', 'pdfc'); d.appendChild(cv);
+      const il = el('div', 'pdfi');
+      (p.images || []).forEach((im, j) => {
+        const s = el('span', 'pdfim'); s.dataset.i = j; s.title = 'Click to replace or remove this image';
+        s.style.left = css('', im.x); s.style.top = css('', im.y); s.style.width = css('', im.w); s.style.height = css('', im.h);
+        il.appendChild(s);
+      });
+      il.addEventListener('click', ev => { const s = ev.target.closest('.pdfim'); if (s) fromImage(i, p.images[+s.dataset.i]); });
+      d.appendChild(il);
       const tl = el('div', 'pdft');
       p.items.forEach((it, j) => {
         const s = el('span', 'pdftx'); s.dataset.i = j; s.title = 'Click to edit this text';
@@ -4060,7 +4104,8 @@ $('prn').addEventListener('click', () => window.print());
 
   const edStyle = (d, e) => {
     d.style.left = css('', e.x); d.style.top = css('', e.y);
-    if (e.type === 'rect' || e.type === 'replace') { d.style.width = css('', e.w); d.style.height = css('', e.h); }
+    if (e.type === 'rect' || e.type === 'replace' || e.type === 'image') { d.style.width = css('', e.w); d.style.height = css('', e.h); }
+    if (e.type === 'image') d.style.background = e.fill || 'transparent';
     if (e.type === 'text') d.style.width = e.w ? css('', e.w) : '';
     if (e.type === 'rect') { d.style.background = e.fill || 'transparent'; d.style.border = e.stroke ? 'calc(var(--k) * ' + e.sw + ') solid ' + e.stroke : '0'; }
     if (e.type === 'replace') d.style.background = e.fill || 'transparent';
@@ -4080,6 +4125,11 @@ $('prn').addEventListener('click', () => window.print());
       const p = P.pages[e.page - 1]; if (!p) return;
       const d = el('div', 'pe pe-' + e.type + (i === sel ? ' picked' : '')); d.dataset.ei = i; if (lines[i]) d.dataset.ln = lines[i];
       if (e.type === 'text' || e.type === 'replace') { const t = el('div', 'pet'); t.textContent = fillText(e.text); d.appendChild(t); }
+      if (e.type === 'image') {
+        const u = assetUrl(e.src);
+        if (u) { const im = el('img'); im.src = u; im.draggable = false; im.alt = ''; d.appendChild(im); }
+        else if (e.src) d.appendChild(el('span', 'pemiss', 'Image not loaded'));
+      }
       edStyle(d, e);
       d.appendChild(el('div', 'pegrip'));
       d.addEventListener('pointerdown', ev => startDrag(ev, i, !!ev.target.closest('.pegrip')));
@@ -4137,14 +4187,75 @@ $('prn').addEventListener('click', () => window.print());
     const ed = raw(); ed.push(e); commit(ed, ed.length - 1);
     setTimeout(() => { const t = box.querySelector('textarea'); if (t) { t.focus(); t.select(); } }, 30);
   }
+  const assetUrl = s => !s ? '' : s[0] === '@' ? ((P.assets[s.slice(1)] || {}).url || '') : /^data:image\//.test(s) ? s : '';
+  function sampleBg(pi, x, y, w, h) {
+    const p = P.pages[pi], c = p && p.cv; if (!c || !c.width) return '#ffffff';
+    try {
+      const sc = c.width / p.w, ctx = c.getContext('2d'), cnt = {}, d = 2.5;
+      const pts = [[x - d, y - d], [x + w + d, y - d], [x - d, y + h + d], [x + w + d, y + h + d], [x + w / 2, y - d], [x + w / 2, y + h + d], [x - d, y + h / 2], [x + w + d, y + h / 2]];
+      pts.forEach(q => {
+        const px = Math.min(c.width - 1, Math.max(0, Math.round(q[0] * sc))), py = Math.min(c.height - 1, Math.max(0, Math.round(q[1] * sc)));
+        const v = ctx.getImageData(px, py, 1, 1).data, k = [v[0] >> 3, v[1] >> 3, v[2] >> 3].join(',');
+        (cnt[k] = cnt[k] || { n: 0, v }).n++;
+      });
+      const best = Object.values(cnt).sort((a, b) => b.n - a.n)[0].v;
+      return '#' + [best[0], best[1], best[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    } catch (e) { return '#ffffff'; }
+  }
+  function fromImage(pi, im) {
+    const e = { page: pi + 1, type: 'image', x: num1(im.x - 0.6), y: num1(im.y - 0.6), w: num1(im.w + 1.2), h: num1(im.h + 1.2), fill: sampleBg(pi, im.x, im.y, im.w, im.h), src: null };
+    const ed = raw(); ed.push(e); commit(ed, ed.length - 1);
+    say(true, 'Image selected. Choose a new image in the panel below, or leave it empty to remove this one.');
+  }
+  const fileToPng = f => new Promise((res, rej) => {
+    const u = URL.createObjectURL(f), im = new Image();
+    im.onload = () => { const m = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.naturalWidth * m)); c.height = Math.max(1, Math.round(im.naturalHeight * m)); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res({ url: c.toDataURL('image/png'), w: im.naturalWidth, h: im.naturalHeight }); };
+    im.onerror = () => rej(new Error('That file is not an image the browser can read.')); im.src = u;
+  });
+  async function pickImage(forSel) {
+    const inp = $('padd-imgfile'); inp.value = '';
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; if (!f) return;
+      try {
+        const r = await fileToPng(f), id = 'a' + (++P.aid); P.assets[id] = { url: r.url };
+        const ed = raw();
+        if (forSel && ed[sel] && ed[sel].type === 'image') { ed[sel].src = '@' + id; commit(ed, sel); }
+        else {
+          const pi = visiblePage(), p = P.pages[pi], rr = p.el.getBoundingClientRect(), dr = desk.getBoundingClientRect(), k = kpx(pi);
+          const w = Math.min(140, p.w / 3), h = w * r.h / r.w, x = Math.max(20, (Math.max(dr.left, rr.left) - rr.left) / k + 40), y = Math.max(20, (Math.max(dr.top, rr.top) - rr.top) / k + 40);
+          ed.push({ page: pi + 1, type: 'image', x: num1(x), y: num1(y), w: num1(w), h: num1(h), fill: null, src: '@' + id }); commit(ed, ed.length - 1);
+        }
+      } catch (err) { say(false, err.message); }
+    };
+    inp.click();
+  }
+  /* Cover area: drag a rectangle on the page, it becomes a box filled with the page colour */
+  function startArea() {
+    if (!P.doc) { say(false, 'Open a PDF first.'); return; }
+    areaMode = !areaMode; document.body.classList.toggle('areamode', areaMode);
+    $('padd-area').setAttribute('aria-pressed', String(areaMode));
+    say(true, areaMode ? 'Drag a rectangle on the page to cover that area.' : 'Cover area is off.');
+  }
+  desk.addEventListener('pointerdown', ev => {
+    if (!areaMode || ev.button !== 0) return;
+    const pg = ev.target.closest && ev.target.closest('.pdfpage'); if (!pg) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const pi = +pg.dataset.p - 1, r = pg.getBoundingClientRect(), k = r.width / P.pages[pi].w, x0 = ev.clientX, y0 = ev.clientY;
+    const band = el('div', 'pband'); pg.appendChild(band);
+    const mv = e => { const x = Math.min(x0, e.clientX), y = Math.min(y0, e.clientY); band.style.cssText = 'left:' + (x - r.left) + 'px;top:' + (y - r.top) + 'px;width:' + Math.abs(e.clientX - x0) + 'px;height:' + Math.abs(e.clientY - y0) + 'px'; };
+    const up = e => {
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); band.remove();
+      areaMode = false; document.body.classList.remove('areamode'); $('padd-area').setAttribute('aria-pressed', 'false');
+      const x = (Math.min(x0, e.clientX) - r.left) / k, y = (Math.min(y0, e.clientY) - r.top) / k, w = Math.abs(e.clientX - x0) / k, h = Math.abs(e.clientY - y0) / k;
+      if (w < 3 || h < 3) { say(false, 'Drag a larger rectangle to cover an area.'); return; }
+      const ed = raw(); ed.push({ page: pi + 1, type: 'rect', x: num1(x), y: num1(y), w: num1(w), h: num1(h), fill: sampleBg(pi, x, y, w, h), stroke: null }); commit(ed, ed.length - 1);
+    };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  }, true);
+
   function fromText(pi, it, pageEl) {
     const p = P.pages[pi];
-    let fill = '#ffffff';
-    try {
-      const c = p.cv, sc = (c.width / p.w) || 1, ctx = c.getContext('2d');
-      const px = ctx.getImageData(Math.max(0, Math.round((it.x - 2) * sc)), Math.max(0, Math.round((it.y + it.h / 2) * sc)), 1, 1).data;
-      fill = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
-    } catch (e) { fill = '#ffffff'; }
+    const fill = sampleBg(pi, it.x, it.y, it.w, it.h);
     const e = { page: pi + 1, type: 'replace', x: num1(it.x - 1), y: num1(it.y), w: num1(it.w + 3), h: num1(it.h), size: num1(it.size), text: it.str, font: it.font, bold: it.bold, color: '#000000', fill, align: 'left' };
     const ed = raw(); ed.push(e); commit(ed, ed.length - 1);
     setTimeout(() => { const t = box.querySelector('textarea'); if (t) { t.focus(); t.select(); } }, 30);
@@ -4170,7 +4281,7 @@ $('prn').addEventListener('click', () => window.print());
       o.x = num1(e.x + ddx); o.y = num1(e.y + ddy);
       if (e.type === 'line') { o.x2 = num1(e.x2 + ddx); o.y2 = num1(e.y2 + ddy); }
     } else if (e.type === 'line') { o.x2 = num1(e.x2 + ddx); o.y2 = num1(e.y2 + ddy); }
-    else if (e.type === 'rect' || e.type === 'replace') { o.w = Math.max(2, num1(e.w + ddx)); o.h = Math.max(2, num1(e.h + ddy)); }
+    else if (e.type === 'rect' || e.type === 'replace' || e.type === 'image') { o.w = Math.max(2, num1(e.w + ddx)); o.h = Math.max(2, num1(e.h + ddy)); }
     else { const w0 = e.w || Math.max(10, drag.r0.width / drag.k); const f = Math.max(.2, (w0 + ddx) / w0); o.size = Math.max(4, num1(e.size * f)); if (e.w) o.w = num1(e.w * f); }
     edStyle(drag.node, o);
     dragTip(ev, o.type === 'line' ? 'X ' + o.x + '  Y ' + o.y + '  to ' + o.x2 + ', ' + o.y2 : 'X ' + o.x + '  Y ' + o.y + (o.w != null ? '  W ' + o.w : '') + (o.h != null ? '  H ' + o.h : '') + (o.type === 'text' ? '  Size ' + o.size : ''));
@@ -4192,7 +4303,7 @@ $('prn').addEventListener('click', () => window.print());
     const keepFocus = document.activeElement && box.contains(document.activeElement) && !fresh;
     if (keepFocus) return;   /* never rebuild under the cursor */
     box.replaceChildren(); box.dataset.pdf = '1'; box.dataset.sel = sel + ':' + e.type; box.hidden = false;
-    const head = el('div', 'sbh'); head.appendChild(el('b', '', ({ text: 'Text', rect: 'Box', replace: 'Replaced text', line: 'Line' })[e.type] + ' on page ' + e.page));
+    const head = el('div', 'sbh'); head.appendChild(el('b', '', ({ text: 'Text', rect: 'Box', replace: 'Replaced text', line: 'Line', image: 'Image' })[e.type] + ' on page ' + e.page));
     const hb = el('span', 'sbb');
     const btn = (t, f) => { const b = el('button', 'btn sm', t); b.type = 'button'; b.addEventListener('click', f); hb.appendChild(b); };
     btn('Duplicate', () => { const ed = raw(), c = Object.assign({}, ed[sel]); c.x = num1((c.x || 0) + 12); c.y = num1((c.y || 0) + 12); if (c.x2 != null) { c.x2 = num1(c.x2 + 12); c.y2 = num1(c.y2 + 12); } ed.splice(sel + 1, 0, c); commit(ed, sel + 1); });
@@ -4223,11 +4334,18 @@ $('prn').addEventListener('click', () => window.print());
       const sg = el('div', 'seg'); [['Left', 'left'], ['Center', 'center'], ['Right', 'right']].forEach(([l, v]) => { const b = el('button', '', l); b.type = 'button'; b.setAttribute('aria-pressed', String(e.align === v)); b.addEventListener('click', () => { if (e.type === 'text' && !e.w) { const ed = raw(); ed[sel].w = 200; ed[sel].align = v; commit(ed, sel); } else set('align', v, false); }); sg.appendChild(b); });
       add('Alignment inside its box', sg, true);
     }
-    if (e.type === 'rect' || e.type === 'replace') { add('Fill', colIn('fill', e.fill, true)); }
+    if (e.type === 'image') {
+      const b = el('button', 'btn sm', e.src ? 'Choose another image…' : 'Choose a new image…'); b.type = 'button'; b.addEventListener('click', () => pickImage(true)); add('Replace with', b, true);
+      if (e.src) { const r = el('button', 'btn sm', 'Remove the new image'); r.type = 'button'; r.addEventListener('click', () => set('src', null, false)); add('New image', r); }
+    }
+    if (e.type === 'rect' || e.type === 'replace' || e.type === 'image') {
+      add('Fill', colIn('fill', e.fill, true));
+      const mb = el('button', 'btn sm', 'Match page colour'); mb.type = 'button'; mb.addEventListener('click', () => set('fill', sampleBg(e.page - 1, e.x, e.y, e.w, e.h), false)); add('Cover colour', mb);
+    }
     if (e.type === 'rect') { add('Border', colIn('stroke', e.stroke, true)); add('Border width', numIn('sw', e.sw, '0.5')); }
     if (e.type === 'line') { add('Colour', colIn('color', e.color)); add('Thickness', numIn('sw', e.sw, '0.5')); }
     add('X (pt)', numIn('x', e.x)); add('Y (pt)', numIn('y', e.y));
-    if (e.type === 'rect' || e.type === 'replace') { add('Width (pt)', numIn('w', e.w)); add('Height (pt)', numIn('h', e.h)); }
+    if (e.type === 'rect' || e.type === 'replace' || e.type === 'image') { add('Width (pt)', numIn('w', e.w)); add('Height (pt)', numIn('h', e.h)); }
     else if (e.type === 'text') add('Box width (pt, 0 = auto)', numIn('w', e.w || 0));
     if (e.type === 'line') { add('End X (pt)', numIn('x2', e.x2)); add('End Y (pt)', numIn('y2', e.y2)); }
     const pgs = el('select'); P.pages.forEach((_, i) => { const o = el('option', '', 'Page ' + (i + 1)); o.value = i + 1; pgs.appendChild(o); }); pgs.value = e.page; pgs.addEventListener('change', () => set('page', +pgs.value, false)); add('Page', pgs);
@@ -4276,6 +4394,16 @@ $('prn').addEventListener('click', () => window.print());
         if (e.fill) o.color = col(e.fill); if (e.type === 'rect' && e.stroke) { o.borderColor = col(e.stroke); o.borderWidth = e.sw; }
         if (o.color || o.borderColor) pg.drawRectangle(o);
       }
+      if (e.type === 'image') {
+        if (e.fill) pg.drawRectangle({ x: e.x, y: H - e.y - e.h, width: e.w, height: e.h, color: col(e.fill) });
+        const u = assetUrl(e.src);
+        if (u) {
+          const bin = atob(u.split(',')[1] || ''), by = new Uint8Array(bin.length); for (let q = 0; q < bin.length; q++) by[q] = bin.charCodeAt(q);
+          const im = await (/^data:image\/jpe?g/.test(u) ? doc.embedJpg(by) : doc.embedPng(by));
+          const f = Math.min(e.w / im.width, e.h / im.height), w = im.width * f, h = im.height * f;
+          pg.drawImage(im, { x: e.x + (e.w - w) / 2, y: H - e.y - e.h + (e.h - h) / 2, width: w, height: h });
+        }
+      }
       if (e.type === 'line') pg.drawLine({ start: { x: e.x, y: H - e.y }, end: { x: e.x2, y: H - e.y2 }, thickness: e.sw, color: col(e.color, [0, 0, 0]) });
       if (e.type === 'text' || e.type === 'replace') {
         const txt = fillText(e.text); if (!txt) continue;
@@ -4317,11 +4445,13 @@ $('prn').addEventListener('click', () => window.print());
   $('padd-text').addEventListener('click', () => addEdit('text'));
   $('padd-box').addEventListener('click', () => addEdit('rect'));
   $('padd-line').addEventListener('click', () => addEdit('line'));
+  $('padd-img').addEventListener('click', () => pickImage(false));
+  $('padd-area').addEventListener('click', startArea);
   $('padd-undo').addEventListener('click', () => repxUndo());
   zoomEl.addEventListener('input', () => { if (active) schedRaster(); });
   $('fit').addEventListener('click', () => { if (active && P.pages.length) { setZoom(fit()); schedRaster(); } });
   window.addEventListener('resize', () => { if (active) schedRaster(); });
-  desk.addEventListener('click', ev => { if (active && !ev.target.closest('.pe,.pdftx')) select(-1); });
+  desk.addEventListener('click', ev => { if (active && !ev.target.closest('.pe,.pdftx,.pdfim')) select(-1); });
   window.__gdPaper = () => active && P.pages.length ? (window.__pdfPage != null && drag ? P.pages[window.__pdfPage].el : P.pages[visiblePage()].el) : null;
   window.__pdf = {
     get active() { return active; }, get hasDoc() { return !!P.bytes; },
