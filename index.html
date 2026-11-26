@@ -502,6 +502,7 @@ body.areamode .pdftx,body.areamode .pdfim,body.areamode .pe{pointer-events:none}
         <button type="button" class="btn sm" id="padd-box">Add box</button>
         <button type="button" class="btn sm" id="padd-line">Add line</button>
         <button type="button" class="btn sm" id="padd-img" title="Insert a logo or picture">Add image</button>
+        <button type="button" class="btn sm" id="padd-move" aria-pressed="false" title="Drag a rectangle around a logo or drawing to make it movable">Move area</button>
         <button type="button" class="btn sm" id="padd-area" aria-pressed="false" title="Drag a rectangle to cover anything, such as a logo or stamp">Cover area</button>
         <input type="file" id="padd-imgfile" accept="image/*" hidden>
         <button type="button" class="btn sm" id="padd-undo">Undo</button>
@@ -4005,7 +4006,7 @@ $('prn').addEventListener('click', () => window.print());
             else if (fn === O.paintImageXObject || fn === O.paintInlineImageXObject || fn === O.paintImageMaskXObject || fn === O.paintJpegXObject) {
               const mm = U.transform(vp.transform, m), pts = [[0, 0], [1, 0], [0, 1], [1, 1]].map(p => [mm[0] * p[0] + mm[2] * p[1] + mm[4], mm[1] * p[0] + mm[3] * p[1] + mm[5]]);
               const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y;
-              if (w >= 4 && h >= 4 && !images.some(i => Math.abs(i.x - x) < .5 && Math.abs(i.y - y) < .5 && Math.abs(i.w - w) < .5 && Math.abs(i.h - h) < .5)) images.push({ x, y, w, h });
+              if (w >= 4 && h >= 4 && !images.some(i => Math.abs(i.x - x) < .5 && Math.abs(i.y - y) < .5 && Math.abs(i.w - w) < .5 && Math.abs(i.h - h) < .5)) images.push({ x, y, w, h, id: fn === O.paintImageXObject ? a[0] : null, up: Math.abs(mm[1]) < 1e-3 && Math.abs(mm[2]) < 1e-3 && mm[0] > 0 && mm[3] < 0 });
             }
           }
         } catch (err) { /* images stay clickable through Cover area */ }
@@ -4202,10 +4203,55 @@ $('prn').addEventListener('click', () => window.print());
       return '#' + [best[0], best[1], best[2]].map(v => v.toString(16).padStart(2, '0')).join('');
     } catch (e) { return '#ffffff'; }
   }
-  function fromImage(pi, im) {
-    const e = { page: pi + 1, type: 'image', x: num1(im.x - 0.6), y: num1(im.y - 0.6), w: num1(im.w + 1.2), h: num1(im.h + 1.2), fill: sampleBg(pi, im.x, im.y, im.w, im.h), src: null };
-    const ed = raw(); ed.push(e); commit(ed, ed.length - 1);
-    say(true, 'Image selected. Choose a new image in the panel below, or leave it empty to remove this one.');
+  const newAsset = url => { const id = 'a' + (++P.aid); P.assets[id] = { url }; return '@' + id; };
+  async function renderOff(pi, scale) {
+    const p = P.pages[pi], vp = p.page.getViewport({ scale }), c = document.createElement('canvas');
+    c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    await p.page.render({ canvasContext: c.getContext('2d'), canvas: c, viewport: vp }).promise;
+    return c;
+  }
+  async function cropRegion(pi, x, y, w, h) {
+    const p = P.pages[pi], sc = Math.min(5, 3600 / Math.max(p.w, p.h)), c = await renderOff(pi, sc);
+    const o = document.createElement('canvas'); o.width = Math.max(1, Math.round(w * sc)); o.height = Math.max(1, Math.round(h * sc));
+    o.getContext('2d').drawImage(c, Math.round(x * sc), Math.round(y * sc), o.width, o.height, 0, 0, o.width, o.height);
+    return o.toDataURL('image/png');
+  }
+  /* the picture's own pixels, with transparency, straight from the PDF */
+  async function imageAsset(pi, im) {
+    if (!im.id || !im.up) return null;
+    const pg = P.pages[pi].page;
+    const obj = await new Promise(res => { let done = false; const t = setTimeout(() => { if (!done) res(null); }, 4000); try { pg.objs.get(im.id, o => { done = true; clearTimeout(t); res(o); }); } catch (e) { clearTimeout(t); res(null); } });
+    if (!obj) return null;
+    const c = document.createElement('canvas');
+    if (obj.bitmap) { c.width = obj.bitmap.width; c.height = obj.bitmap.height; c.getContext('2d').drawImage(obj.bitmap, 0, 0); }
+    else if (obj.data && obj.width && obj.height) {
+      c.width = obj.width; c.height = obj.height; const id = c.getContext('2d').createImageData(obj.width, obj.height), d = obj.data, n = obj.width * obj.height;
+      if (obj.kind === 3 || d.length === n * 4) id.data.set(d.subarray ? d.subarray(0, n * 4) : d);
+      else if (obj.kind === 2 || d.length === n * 3) for (let i = 0, j = 0; i < n; i++, j += 3) { id.data[i * 4] = d[j]; id.data[i * 4 + 1] = d[j + 1]; id.data[i * 4 + 2] = d[j + 2]; id.data[i * 4 + 3] = 255; }
+      else if (obj.kind === 1 || d.length === n) for (let i = 0; i < n; i++) { id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = d[i]; id.data[i * 4 + 3] = 255; }
+      else return null;
+      c.getContext('2d').putImageData(id, 0, 0);
+    } else return null;
+    const m = Math.min(1, 2400 / Math.max(c.width, c.height));
+    if (m < 1) { const o = document.createElement('canvas'); o.width = Math.round(c.width * m); o.height = Math.round(c.height * m); o.getContext('2d').drawImage(c, 0, 0, o.width, o.height); return o.toDataURL('image/png'); }
+    return c.toDataURL('image/png');
+  }
+  /* cover the original spot, and add a movable copy of what was there */
+  async function makeMovable(pi, x, y, w, h, url) {
+    const fill = sampleBg(pi, x, y, w, h);
+    if (!url) url = await cropRegion(pi, x, y, w, h);
+    const ed = raw();
+    ed.push({ page: pi + 1, type: 'rect', x: num1(x), y: num1(y), w: num1(w), h: num1(h), fill, stroke: null });
+    ed.push({ page: pi + 1, type: 'image', x: num1(x), y: num1(y), w: num1(w), h: num1(h), fill: null, src: newAsset(url) });
+    commit(ed, ed.length - 1);
+  }
+  async function fromImage(pi, im) {
+    say(true, 'Preparing the picture…');
+    try {
+      const url = await imageAsset(pi, im).catch(() => null);
+      await makeMovable(pi, im.x - 0.6, im.y - 0.6, im.w + 1.2, im.h + 1.2, url);
+      say(true, 'The picture is now movable. Drag it, resize it, or choose a new image in the panel. The original spot is covered by a box.');
+    } catch (e) { say(false, 'Could not prepare the picture: ' + (e && e.message || e)); }
   }
   const fileToPng = f => new Promise((res, rej) => {
     const u = URL.createObjectURL(f), im = new Image();
@@ -4230,11 +4276,11 @@ $('prn').addEventListener('click', () => window.print());
     inp.click();
   }
   /* Cover area: drag a rectangle on the page, it becomes a box filled with the page colour */
-  function startArea() {
+  function startArea(mode) {
     if (!P.doc) { say(false, 'Open a PDF first.'); return; }
-    areaMode = !areaMode; document.body.classList.toggle('areamode', areaMode);
-    $('padd-area').setAttribute('aria-pressed', String(areaMode));
-    say(true, areaMode ? 'Drag a rectangle on the page to cover that area.' : 'Cover area is off.');
+    areaMode = areaMode === mode ? false : mode; document.body.classList.toggle('areamode', !!areaMode);
+    $('padd-area').setAttribute('aria-pressed', String(areaMode === 'cover')); $('padd-move').setAttribute('aria-pressed', String(areaMode === 'move'));
+    say(true, areaMode === 'cover' ? 'Drag a rectangle on the page to cover that area.' : areaMode === 'move' ? 'Drag a rectangle around the logo or drawing you want to move.' : 'Area tool is off.');
   }
   desk.addEventListener('pointerdown', ev => {
     if (!areaMode || ev.button !== 0) return;
@@ -4245,9 +4291,10 @@ $('prn').addEventListener('click', () => window.print());
     const mv = e => { const x = Math.min(x0, e.clientX), y = Math.min(y0, e.clientY); band.style.cssText = 'left:' + (x - r.left) + 'px;top:' + (y - r.top) + 'px;width:' + Math.abs(e.clientX - x0) + 'px;height:' + Math.abs(e.clientY - y0) + 'px'; };
     const up = e => {
       window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); band.remove();
-      areaMode = false; document.body.classList.remove('areamode'); $('padd-area').setAttribute('aria-pressed', 'false');
+      const mode = areaMode; areaMode = false; document.body.classList.remove('areamode'); $('padd-area').setAttribute('aria-pressed', 'false'); $('padd-move').setAttribute('aria-pressed', 'false');
       const x = (Math.min(x0, e.clientX) - r.left) / k, y = (Math.min(y0, e.clientY) - r.top) / k, w = Math.abs(e.clientX - x0) / k, h = Math.abs(e.clientY - y0) / k;
-      if (w < 3 || h < 3) { say(false, 'Drag a larger rectangle to cover an area.'); return; }
+      if (w < 3 || h < 3) { say(false, 'Drag a larger rectangle.'); return; }
+      if (mode === 'move') { makeMovable(pi, x, y, w, h, null).then(() => say(true, 'That area is now movable. Drag it or resize it.')).catch(err => say(false, err.message)); return; }
       const ed = raw(); ed.push({ page: pi + 1, type: 'rect', x: num1(x), y: num1(y), w: num1(w), h: num1(h), fill: sampleBg(pi, x, y, w, h), stroke: null }); commit(ed, ed.length - 1);
     };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
@@ -4340,6 +4387,7 @@ $('prn').addEventListener('click', () => window.print());
     }
     if (e.type === 'rect' || e.type === 'replace' || e.type === 'image') {
       add('Fill', colIn('fill', e.fill, true));
+      if (e.type === 'rect') { const mv = el('button', 'btn sm', 'Make this area movable'); mv.type = 'button'; mv.title = 'Copies what is under this box so you can move it'; mv.addEventListener('click', async () => { try { const url = await cropRegion(e.page - 1, e.x, e.y, e.w, e.h); const ed = raw(); ed.push({ page: e.page, type: 'image', x: e.x, y: e.y, w: e.w, h: e.h, fill: null, src: newAsset(url) }); commit(ed, ed.length - 1); } catch (err) { say(false, err.message); } }); add('Move what is under it', mv); }
       const mb = el('button', 'btn sm', 'Match page colour'); mb.type = 'button'; mb.addEventListener('click', () => set('fill', sampleBg(e.page - 1, e.x, e.y, e.w, e.h), false)); add('Cover colour', mb);
     }
     if (e.type === 'rect') { add('Border', colIn('stroke', e.stroke, true)); add('Border width', numIn('sw', e.sw, '0.5')); }
@@ -4446,7 +4494,8 @@ $('prn').addEventListener('click', () => window.print());
   $('padd-box').addEventListener('click', () => addEdit('rect'));
   $('padd-line').addEventListener('click', () => addEdit('line'));
   $('padd-img').addEventListener('click', () => pickImage(false));
-  $('padd-area').addEventListener('click', startArea);
+  $('padd-area').addEventListener('click', () => startArea('cover'));
+  $('padd-move').addEventListener('click', () => startArea('move'));
   $('padd-undo').addEventListener('click', () => repxUndo());
   zoomEl.addEventListener('input', () => { if (active) schedRaster(); });
   $('fit').addEventListener('click', () => { if (active && P.pages.length) { setZoom(fit()); schedRaster(); } });
